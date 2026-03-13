@@ -8,18 +8,24 @@
 #include <math.h>
 #include <ArduinoJson.h>
 
+// ================================================================
+// 1. CẤU HÌNH WIFI & SERVER
+// ================================================================
 const char* ssid = "Giat Ui Tigon 1";
 const char* password = "789789789";
-// Ví dụ đúng:  "http://172.20.10.3:3000"
-// Ví dụ sai:   "http://172.20.10.3:3000/api/sensor" 
-const char* serverBase = "http://192.168.1.16:3000";
-
+const char* serverBase = "http://192.168.1.4:3000";
+// const char* ssid = "ITF - Da Nang";
+// const char* password = "888888888"; 
+// const char* serverBase = "http://172.20.10.2:3000";
 #define I2C_SDA 4
 #define I2C_SCL 5
 #define BUTTON_PIN 9
 #define SAMPLE_INTERVAL 20 // 50Hz = 20ms
 #define WINDOW_SIZE 100
 
+// ================================================================
+// 2. CẤU TRÚC DỮ LIỆU
+// ================================================================
 struct SensorSample {
   float timestamp;
   float ax, ay, az;
@@ -34,10 +40,12 @@ struct WindowPackage {
   bool ready = false;
 } currentWindow;
 
+// Đối tượng cảm biến
 Adafruit_MPU6050 mpu;
 MAX30105 particleSensor;
 SemaphoreHandle_t xMutex;
 
+// Biến Heart Rate
 const byte RATE_SIZE = 4;
 byte rates[RATE_SIZE];
 byte rateSpot = 0;
@@ -46,14 +54,17 @@ float beatsPerMinute = 0;
 int beatAvg = 0;
 long irValue = 0;
 
+// Trạng thái hệ thống
 bool systemState = false;
 unsigned long lastSampleTime = 0;
 unsigned long startTime = 0;
 int bufferIndex = 0;
 
+// Button behavior
 unsigned long buttonPressedAt = 0;
 const unsigned long longPressMs = 1500;
 
+// Endpoint URLs
 String batchEndpoint;
 String sessionNewEndpoint;
 String sessionStopEndpoint;
@@ -61,13 +72,11 @@ String sessionStopEndpoint;
 bool postJson(const String& url, const String& payload) {
   if (WiFi.status() != WL_CONNECTED) return false;
   HTTPClient http;
-  http.setTimeout(1200);
   http.begin(url);
   http.addHeader("Content-Type", "application/json");
   int httpCode = http.POST(payload);
   http.end();
-  // Chỉ coi là OK khi HTTP 2xx
-  return (httpCode >= 200 && httpCode < 300);
+  return httpCode > 0;
 }
 
 void newSession() {
@@ -82,6 +91,9 @@ void stopSession() {
   postJson(sessionStopEndpoint, "{}");
 }
 
+// ================================================================
+// 3. BỘ LỌC KALMAN
+// ================================================================
 class SimpleKalmanFilter {
   private:
     float _err_measure, _err_estimate, _q, _current_estimate = 0, _last_estimate = 0;
@@ -100,10 +112,14 @@ class SimpleKalmanFilter {
 SimpleKalmanFilter kf_ax(2, 2, 0.01), kf_ay(2, 2, 0.01), kf_az(2, 2, 0.01);
 SimpleKalmanFilter kf_gx(0.5, 0.5, 0.01), kf_gy(0.5, 0.5, 0.01), kf_gz(0.5, 0.5, 0.01);
 
+// ================================================================
+// 4. CORE 0: GỬI DỮ LIỆU QUA WIFI (CHẠY NGẦM)
+// ================================================================
 void SendDataTask(void * pvParameters) {
   while(1) {
     if (currentWindow.ready) {
       if (WiFi.status() == WL_CONNECTED) {
+        // Tăng dung lượng JSON lên 16KB để chứa đủ 100 samples + features
         DynamicJsonDocument doc(16384); 
         
         doc["status"] = "active";
@@ -139,18 +155,12 @@ void SendDataTask(void * pvParameters) {
         serializeJson(doc, jsonString);
 
         HTTPClient http;
-        http.setTimeout(1200);
         http.begin(batchEndpoint);
         http.addHeader("Content-Type", "application/json");
         int httpCode = http.POST(jsonString);
         
-        if (httpCode >= 200 && httpCode < 300) {
-          Serial.printf("✓ Sent Window | HTTP: %d | Mag: %.2f | BPM: %d\n", httpCode, currentWindow.mag_avg, currentWindow.bpm);
-        } else if (httpCode > 0) {
-          Serial.printf("✗ Server responded | HTTP: %d (check URL/endpoint)\n", httpCode);
-        } else {
-          Serial.printf("✗ HTTP Error: %s\n", http.errorToString(httpCode).c_str());
-        }
+        if (httpCode > 0) Serial.printf("✓ Sent Window | HTTP: %d | Mag: %.2f | BPM: %d\n", httpCode, currentWindow.mag_avg, currentWindow.bpm);
+        else Serial.printf("✗ HTTP Error: %s\n", http.errorToString(httpCode).c_str());
         http.end();
       }
     }
@@ -158,6 +168,9 @@ void SendDataTask(void * pvParameters) {
   }
 }
 
+// ================================================================
+// 5. SETUP & LOOP (CORE 1)
+// ================================================================
 void setup() {
   Serial.begin(115200);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -200,6 +213,7 @@ void loop() {
   handleButton();
 
   if (systemState) {
+    // 1. Đọc Heart Rate nhanh nhất có thể (Bắt buộc để BPM không bằng 0)
     irValue = particleSensor.getIR();
     if (checkForBeat(irValue)) {
       long delta = millis() - lastBeat;
@@ -214,6 +228,7 @@ void loop() {
       }
     }
 
+    // 2. Đọc IMU 50Hz
     unsigned long currentMillis = millis();
     if (currentMillis - lastSampleTime >= SAMPLE_INTERVAL) {
       lastSampleTime = currentMillis;
@@ -253,7 +268,7 @@ void loop() {
           currentWindow.sma = s_sum / (3.0 * WINDOW_SIZE);
           currentWindow.max_a = m_accel;
           currentWindow.max_g = m_gyro;
-          currentWindow.bpm = (irValue < 20000) ? 0 : beatAvg; 
+          currentWindow.bpm = (irValue < 20000) ? 0 : beatAvg; // Ngưỡng IR nhạy hơn
           currentWindow.ir = irValue;
           
           currentWindow.ready = true; // Kích hoạt Core 0 gửi đi

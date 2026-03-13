@@ -13,7 +13,11 @@ const io = socketIO(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
-  }
+  },
+  pingInterval: 25000,   // ping mỗi 25s (mặc định)
+  pingTimeout: 60000,    // chờ pong 60s trước khi disconnect
+  transports: ['websocket', 'polling'],
+  allowUpgrades: false   // không upgrade → tránh disconnect/reconnect loop
 });
 
 app.use(cors());
@@ -21,7 +25,7 @@ app.use(express.json({ limit: '10mb' }));
 
 let connectedClients = 0;
 
-const CURRENT_LABEL = '0'; 
+let currentLabel = '0';  // Có thể thay đổi từ client qua API
 
 const DATA_DIR = path.join(__dirname, 'data', 'collected');
 const NORMAL_DIR = path.join(DATA_DIR, 'Normal');
@@ -50,7 +54,7 @@ function inferLabelFromSessionId(sessionId) {
 }
 
 function getSessionDir(sessionId = currentSessionId, label = currentSessionLabel) {
-  const effectiveLabel = label ?? inferLabelFromSessionId(sessionId) ?? CURRENT_LABEL;
+  const effectiveLabel = label ?? inferLabelFromSessionId(sessionId) ?? currentLabel;
   const base = effectiveLabel === '1' ? FALL_DIR : NORMAL_DIR;
   return path.join(base, sessionId);
 }
@@ -112,6 +116,21 @@ app.post('/api/sensor-batch', (req, res) => {
     console.error('Error saving CSV:', error);
   }
 
+  // Lưu features vào CSV riêng
+  try {
+    saveFeatures(batchData);
+  } catch (error) {
+    console.error('Error saving features:', error);
+  }
+
+  // Nếu ESP32 báo ngã → tự động mark fall + emit event
+  if (batchData.fall_detected) {
+    const elapsed = currentSessionId ? (Date.now() - new Date(sessionStartTime).getTime()) / 1000 : 0;
+    fallMarkers.push({ timestamp: new Date().toISOString(), elapsed_seconds: elapsed, source: 'esp32_fsm' });
+    io.emit('fallDetected', { session_id: currentSessionId, timestamp: new Date().toISOString(), fsm_state: batchData.fsm_state, features: batchData.features });
+    console.log(`🚨 Fall detected by ESP32 FSM at ${elapsed.toFixed(1)}s`);
+  }
+
   // Broadcast data đến clients
   io.emit('sensorBatch', batchData);
   
@@ -119,19 +138,39 @@ app.post('/api/sensor-batch', (req, res) => {
     success: true, 
     message: 'Batch data received and saved',
     session_id: currentSessionId,
+    label: currentLabel,
     clients: connectedClients 
   });
 });
 
 // API để start/stop session
 app.post('/api/session/start', (req, res) => {
-  startNewSession(CURRENT_LABEL);  // Dùng label từ config
+  startNewSession(currentLabel);  // Dùng label hiện tại
   res.json({ 
     success: true, 
     session_id: currentSessionId,
     start_time: sessionStartTime,
-    label: CURRENT_LABEL
+    label: currentLabel
   });
+});
+
+// GET label hiện tại
+app.get('/api/label', (req, res) => {
+  res.json({ label: currentLabel, text: currentLabel === '1' ? 'FALL' : 'NORMAL' });
+});
+
+// SET label (không cần restart server)
+app.post('/api/label', (req, res) => {
+  const { label } = req.body;
+  if (label === '0' || label === '1') {
+    currentLabel = label;
+    const text = label === '1' ? 'FALL' : 'NORMAL';
+    console.log(`🏷️  Label → ${label} (${text})`);
+    io.emit('labelChanged', { label: currentLabel, text });
+    res.json({ success: true, label: currentLabel, text });
+  } else {
+    res.status(400).json({ success: false, error: 'Invalid label. Use "0" or "1"' });
+  }
 });
 
 app.post('/api/session/stop', (req, res) => {
@@ -168,7 +207,7 @@ app.post('/api/session/new', (req, res) => {
 
   // Start new session
   const requestedLabel = (req.body && typeof req.body.label !== 'undefined') ? String(req.body.label) : null;
-  const labelToUse = (requestedLabel === '0' || requestedLabel === '1') ? requestedLabel : CURRENT_LABEL;
+  const labelToUse = (requestedLabel === '0' || requestedLabel === '1') ? requestedLabel : currentLabel;
   startNewSession(labelToUse);
 
   res.json({
@@ -203,11 +242,24 @@ app.post('/api/mark-fall', (req, res) => {
   });
 });
 
+// GET thống kê sessions đã thu
+app.get('/api/sessions/stats', (req, res) => {
+  const countDirs = (dir) => {
+    if (!fs.existsSync(dir)) return 0;
+    return fs.readdirSync(dir).filter(f => {
+      try { return fs.statSync(path.join(dir, f)).isDirectory(); } catch { return false; }
+    }).length;
+  };
+  res.json({ fall: countDirs(FALL_DIR), normal: countDirs(NORMAL_DIR) });
+});
+
 // Endpoint test
 app.get('/api/status', (req, res) => {
   res.json({ 
     status: 'running',
     connectedClients: connectedClients,
+    label: currentLabel,
+    session_id: currentSessionId,
     timestamp: new Date().toISOString()
   });
 });
@@ -303,6 +355,21 @@ function saveToCSV(batchData) {
     gyroLines += `${sample.t},${sample.x},${sample.y},${sample.z}\n`;
   });
   fs.appendFileSync(gyroPath, gyroLines);
+}
+
+function saveFeatures(batchData) {
+  if (!currentSessionId) return;
+  const sessionDir = getSessionDir();
+  const featuresPath = path.join(sessionDir, 'features.csv');
+
+  if (!fs.existsSync(featuresPath)) {
+    fs.writeFileSync(featuresPath, 'window_time,magnitude_avg,sma,max_accel,max_gyro,std_accel,jerk_peak,bpm,fsm_state,fall_detected\n');
+  }
+
+  const f = batchData.features || {};
+  const elapsed = (Date.now() - new Date(sessionStartTime).getTime()) / 1000;
+  const line = `${elapsed.toFixed(2)},${f.magnitude_avg||0},${f.sma||0},${f.max_accel||0},${f.max_gyro||0},${f.std_accel||0},${f.jerk_peak||0},${batchData.bpm||0},${batchData.fsm_state||0},${batchData.fall_detected?1:0}\n`;
+  fs.appendFileSync(featuresPath, line);
 }
 
 const PORT = process.env.PORT || 3000;
