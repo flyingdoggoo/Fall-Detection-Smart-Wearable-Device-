@@ -26,16 +26,14 @@ const char* serverBase = "http://172.20.10.2:3000";
 // FSM – NGƯỠNG PHÁT HIỆN NGÃ OFFLINE
 // Các giá trị này phù hợp cho thiết bị đeo CỔ TAY, ±8G range.
 // ================================================================
-#define FREE_FALL_THRESH      5.6f   
-#define IMPACT_THRESH         11.0f  
-#define MIN_FREEFALL_SAMPLES    3    
+#define FREE_FALL_THRESH      5.5f   
+#define IMPACT_THRESH         30.0f  
+#define MIN_FREEFALL_SAMPLES    2    
 #define IMPACT_WINDOW_MS      800    
-#define POST_FALL_VARIANCE   10.0f   
-#define POST_FALL_CHECK_MS   2000    
+#define POST_FALL_VARIANCE   8.0f   
+#define POST_FALL_CHECK_MS   3000    
 #define ALERT_DURATION_MS    2000    
-#define FSM_TIMEOUT_MS       2800   
-#define IMPACT_DELTA_THRESH   5.0f   // Impact phải chênh đủ lớn so với mức free-fall thấp nhất
-#define FSM_REARM_DELAY_MS   1200    // Sau reject thì chờ ngắn trước khi cho FSM bắt lại
+#define FSM_TIMEOUT_MS       4000  
 
 // ================================================================
 // 2. CẤU TRÚC DỮ LIỆU
@@ -79,12 +77,10 @@ unsigned long freefallStartMs      = 0;
 int           freefallSampleCount  = 0;
 unsigned long impactDetectedMs     = 0;
 unsigned long alertStartMs         = 0;
-float         postFallMagBuf[150]; // 3 s @ 50 Hz
+float         postFallMagBuf[200]; // 3 s @ 50 Hz
 int           postFallBufIdx       = 0;
 bool          buzzerActive         = false;
 bool          fallDetectedFlag     = false;
-float         freefallMinMag       = 99.0f;
-unsigned long fsmRearmUntilMs      = 0;
 
 // ================================================================
 // Đối tượng cảm biến
@@ -265,17 +261,11 @@ void updateFSM(float magnitude) {
   switch (fallState) {
     // ---- MONITORING: Theo dõi gia tốc liên tục ----
     case FSM_MONITORING:
-      if (now < fsmRearmUntilMs) {
-        freefallSampleCount = 0;
-        break;
-      }
-
       if (magnitude < FREE_FALL_THRESH) {
         freefallSampleCount++;
         if (freefallSampleCount >= MIN_FREEFALL_SAMPLES) {
           fallState       = FSM_FREEFALL;
           freefallStartMs = now;
-          freefallMinMag  = magnitude;
           Serial.println("⚡ FSM → FREE-FALL");
         }
       } else {
@@ -285,12 +275,7 @@ void updateFSM(float magnitude) {
 
     // ---- FREEFALL: Chờ va chạm ----
     case FSM_FREEFALL:
-      if (magnitude < freefallMinMag) {
-        freefallMinMag = magnitude;
-      }
-
-      if (magnitude > IMPACT_THRESH &&
-          (magnitude - freefallMinMag) >= IMPACT_DELTA_THRESH) {
+      if (magnitude > IMPACT_THRESH) {
         fallState        = FSM_IMPACT;
         impactDetectedMs = now;
         postFallBufIdx   = 0;
@@ -298,52 +283,50 @@ void updateFSM(float magnitude) {
       } else if (now - freefallStartMs > IMPACT_WINDOW_MS) {
         fallState           = FSM_MONITORING;
         freefallSampleCount = 0;
-        fsmRearmUntilMs     = now + FSM_REARM_DELAY_MS;
       }
       break;
 
     // ---- IMPACT: Kiểm tra bất động sau va chạm ----
     case FSM_IMPACT:
-      if (postFallBufIdx < 150) {
+      if (postFallBufIdx < 200) {
         postFallMagBuf[postFallBufIdx++] = magnitude;
       }
-
+      if ((now - impactDetectedMs) % 500 < 20) {
+        Serial.printf("... Stillness checking: %.1f/3.0s\n", (now - impactDetectedMs) / 1000.0f);
+      }
       if (now - impactDetectedMs >= POST_FALL_CHECK_MS) {
-        // Chỉ tính variance trên NỬA SAU buffer (bỏ phần settling sau impact)
-        int n = min(postFallBufIdx, 150);
-        int halfStart = n / 2;  // Bắt đầu từ giữa buffer
-        int halfN = n - halfStart;
-        if (halfN > 2) {
+        int n = min(postFallBufIdx, 200);
+        // Bỏ qua 0.5s đầu (chấn động), tính trên 2.5s sau
+        int startIdx = 25; 
+        int sampleCount = n - startIdx;
+
+        if (sampleCount > 10) {
           float sum = 0, sumSq = 0;
-          for (int i = halfStart; i < n; i++) { sum += postFallMagBuf[i]; sumSq += postFallMagBuf[i] * postFallMagBuf[i]; }
-          float mean = sum / halfN;
-          float var  = (sumSq / halfN) - (mean * mean);
+          for (int i = startIdx; i < n; i++) {
+            sum += postFallMagBuf[i];
+            sumSq += postFallMagBuf[i] * postFallMagBuf[i];
+          }
+          float mean = sum / sampleCount;
+          float var = (sumSq / sampleCount) - (mean * mean);
 
           if (var < POST_FALL_VARIANCE) {
-            // Nằm yên → xác nhận ngã
-            fallState        = FSM_FALL_CONFIRMED;
-            alertStartMs     = now;
+            fallState = FSM_FALL_CONFIRMED;
+            alertStartMs = now;
             fallDetectedFlag = true;
             buzzerOn();
-            Serial.printf("🚨 FSM → FALL CONFIRMED (var=%.2f)\n", var);
+            Serial.printf("🚨 CHỐT: NGÃ THẬT (Variance: %.2f)\n", var);
           } else {
-            fallState           = FSM_MONITORING;
+            fallState = FSM_MONITORING;
             freefallSampleCount = 0;
-            fsmRearmUntilMs     = now + FSM_REARM_DELAY_MS;
-            Serial.printf("↩ FSM → MONITORING (var=%.2f – active)\n", var);
+            Serial.printf("↩ RESET: Có cử động (Variance: %.2f)\n", var);
           }
-        } else {
-          fallState = FSM_MONITORING;
-          freefallSampleCount = 0;
-          fsmRearmUntilMs = now + FSM_REARM_DELAY_MS;
-          Serial.println("↩ FSM → MONITORING (not enough samples)");
         }
       }
+      break;
 
       if (now - impactDetectedMs > FSM_TIMEOUT_MS) {
         fallState           = FSM_MONITORING;
         freefallSampleCount = 0;
-        fsmRearmUntilMs     = now + FSM_REARM_DELAY_MS;
       }
       break;
 
@@ -354,7 +337,6 @@ void updateFSM(float magnitude) {
         fallState           = FSM_MONITORING;
         freefallSampleCount = 0;
         fallDetectedFlag    = false;
-        fsmRearmUntilMs     = now + 400;
         Serial.println("🔕 FSM → Alert ended");
       }
       break;
@@ -582,7 +564,7 @@ void loop() {
 
   // Debug magnitude mỗi 500ms
   static unsigned long lastMagPrint = 0;
-  if (now - lastMagPrint >= 500) {
+  if (now - lastMagPrint >= 200) {
     Serial.printf("[MAG] raw=%.1f filt=%.1f | FSM:%d\n", raw_mag, sqrtf(ax*ax+ay*ay+az*az), (int)fallState);
     lastMagPrint = now;
   }
@@ -665,6 +647,7 @@ void handleButton() {
   static bool stableState = HIGH;
   static bool rawLast     = HIGH;
   static unsigned long lastChangeAt = 0;
+  static bool longPressHandled = false;
   bool rawReading = digitalRead(BUTTON_PIN);
 
   if (rawReading != rawLast) {
@@ -674,15 +657,38 @@ void handleButton() {
 
   if (millis() - lastChangeAt < debounceMs) return;
   bool reading = rawReading;
+  unsigned long now = millis();
 
   // Nhấn xuống
   if (stableState == HIGH && reading == LOW) {
-    buttonPressedAt = millis();
+    buttonPressedAt = now;
+    longPressHandled = false;
+  }
+
+  // Xử lý long-press ngay khi đang giữ để tránh rơi vào short-press khi nhả.
+  if (reading == LOW && !longPressHandled && (now - buttonPressedAt >= longPressMs)) {
+    longPressHandled = true;
+    if (systemState) {
+      beepRunning = false;
+      systemState = false;
+      buzzerOff();
+      fallState           = FSM_MONITORING;
+      freefallSampleCount = 0;
+      fallDetectedFlag    = false;
+      stopSession();
+      beepStopped();
+      Serial.println("\n>>> SYSTEM STOPPED");
+    }
   }
 
   // Nhả ra
   if (stableState == LOW && reading == HIGH) {
-    unsigned long dur = millis() - buttonPressedAt;
+    unsigned long dur = now - buttonPressedAt;
+
+    if (longPressHandled) {
+      stableState = reading;
+      return;
+    }
 
     if (dur >= longPressMs) {
       // ---- Long press: STOP + tắt cảnh báo (nếu đang kêu) ----

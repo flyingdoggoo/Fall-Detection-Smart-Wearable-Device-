@@ -25,7 +25,7 @@ app.use(express.json({ limit: '10mb' }));
 
 let connectedClients = 0;
 
-let currentLabel = '0';  // Có thể thay đổi từ client qua API
+let currentLabel = '1';  // Có thể thay đổi từ client qua API
 
 const DATA_DIR = path.join(__dirname, 'data', 'collected');
 const NORMAL_DIR = path.join(DATA_DIR, 'Normal');
@@ -296,7 +296,7 @@ function getLocalIP() {
 // ================================================================
 // HELPER FUNCTIONS
 // ================================================================
-function startNewSession(label = '0') {
+function startNewSession(label = currentLabel) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
   // Format: label0_timestamp hoặc label1_timestamp
   currentSessionId = `label${label}_${timestamp}`;
