@@ -103,10 +103,13 @@ app.post('/api/sensor-batch', (req, res) => {
   }
 
   console.log(`✓ Received batch: ${batchData.accel_data.length} samples | BPM: ${batchData.bpm} | Mag: ${batchData.features?.magnitude_avg?.toFixed(2)}`);
-  
-  // Tạo session mới nếu chưa có
+
+  // Không có session → bỏ qua, không tự tạo session ma
   if (!currentSessionId) {
-    startNewSession();
+    return res.status(409).json({
+      success: false,
+      error: 'No active session – batch ignored'
+    });
   }
 
   // Lưu vào CSV (WEDA-FALL format)
