@@ -17,6 +17,20 @@ if not exist "%~dp0client\index_v2.html" (
 	exit /b 1
 )
 
+if not exist "%~dp0python_ml\start-ml.bat" (
+	echo [ERROR] Missing: %~dp0python_ml\start-ml.bat
+	pause
+	exit /b 1
+)
+
+echo ==========================================
+echo Starting ML Inference Service (Python)
+echo ==========================================
+
+start "ML Service" cmd /k ""%~dp0python_ml\start-ml.bat""
+
+timeout /t 2 /nobreak >nul
+
 echo ==========================================
 echo Starting Sensor Server (Node.js)
 echo ==========================================

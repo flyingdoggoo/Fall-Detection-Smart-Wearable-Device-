@@ -1,0 +1,25 @@
+{
+  "sample_rate": 50,
+  "window_size": 100,
+  "num_channels": 6,
+  "overlap_ratio": 0.5,
+  "threshold": 0.7750216722488403,
+  "class_names": [
+    "Normal",
+    "Fall"
+  ],
+  "aug_multiplier": 1,
+  "metrics": {
+    "test_accuracy": 0.9457,
+    "test_precision": 0.9583,
+    "test_recall": 0.9079,
+    "test_f1": 0.9444,
+    "test_auc": 0.9951,
+    "test_auc_pr": 0.9936
+  },
+  "dataset": {
+    "train_windows": 881,
+    "val_windows": 110,
+    "test_windows": 184
+  }
+}

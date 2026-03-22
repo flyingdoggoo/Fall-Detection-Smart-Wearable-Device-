@@ -422,12 +422,20 @@ void sendWindow() {
   http.addHeader("Content-Type", "application/json");
   http.setTimeout(900);
   int code = http.POST(jsonStr);
+  String responseBody = "";
 
-  if (code > 0)
-    Serial.printf("✓ Sent | HTTP %d | Mag:%.1f | Heap:%u\n",
-                  code, currentWindow.mag_avg, ESP.getFreeHeap());
+  if (code > 0) {
+    responseBody = http.getString();
+  }
+
+  if (code >= 200 && code < 300)
+    Serial.printf("Sent | HTTP %d | Resp:%s | Mag:%.1f | Heap:%u\n",
+                  code, responseBody.c_str(), currentWindow.mag_avg, ESP.getFreeHeap());
+  else if (code > 0)
+    Serial.printf("Server HTTP %d | Resp:%s | Mag:%.1f | Heap:%u\n",
+                  code, responseBody.c_str(), currentWindow.mag_avg, ESP.getFreeHeap());
   else
-    Serial.printf("✗ HTTP %s | Heap:%u\n",
+    Serial.printf("HTTP %s | Heap:%u\n",
                   http.errorToString(code).c_str(), ESP.getFreeHeap());
   http.end();
 }

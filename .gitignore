@@ -1,3 +1,8 @@
 /WEDA-FALL-main
 /public_data
 /server/data
+/server/firebase-service-account.json
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo

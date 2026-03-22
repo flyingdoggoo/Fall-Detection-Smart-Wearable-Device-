@@ -1,0 +1,3 @@
+this is the same ml service but built for gpu
+to run tensorflow with GPU support on Windows
+U need python 3.10, tensorflow 2.10, cuda 11.2, cudnn 8.1
