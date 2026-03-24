@@ -1,29 +1,37 @@
 #include <WiFi.h>
-#include <HTTPClient.h>
+#include <WiFiUdp.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <math.h>
-#include <ArduinoJson.h>
 
 // ================================================================
 // 1. CẤU HÌNH WIFI & SERVER
 // ================================================================
-// const char* ssid       = "ITF - Da Nang";
-// const char* password   = "888888888";
-// const char* serverBase = "http://172.20.10.2:3000";
-const char* ssid       = "Giat Ui Tigon 1";
-const char* password   = "789789789";
-const char* serverBase = "http://192.168.1.7:3000";
+const char* ssid       = "ITF - Da Nang";
+const char* password   = "888888888";
+const char* serverHost = "172.20.10.2";
+
+// const char* ssid       = "Giat Ui Tigon 1"; 
+// const char* password   = "789789789";
+// const char* serverHost = "192.168.1.7";
+
 // const char* ssid       = "Veitel";
-// const char* password   = "12345668";
-// const char* serverBase = "http://10.120.115.2:3000";
+// const char* password   = "12345667";
+// const char* serverHost = "10.120.115.150";
+const uint16_t serverPort = 5683;
+
+
 #define I2C_SDA         4
 #define I2C_SCL         5
 #define BUTTON_PIN      9
 #define BUZZER_PIN      18      // Chân buzzer cảnh báo ngã (OFFLINE)
 #define SAMPLE_INTERVAL 20      // 50 Hz = 20 ms
 #define WINDOW_SIZE     100     // 100 mẫu = 2 giây / window
+#define COAP_LOCAL_PORT 56830
+#define COAP_ACK_TIMEOUT_MS 250
+#define COAP_MAX_RETRIES 2
+#define COAP_CHUNK_SAMPLES 25
 
 // ================================================================
 // MAX30102 – CHỈ BẬT LED + ĐỌC IR ĐỂ DETECT NGÓN TAY
@@ -122,7 +130,19 @@ unsigned long beepNextToggleAt = 0;
 int           beepOnMs         = 0;
 int           beepOffMs        = 0;
 
-String batchEndpoint, sessionNewEndpoint, sessionStopEndpoint;
+const char* batchPath       = "api/sensor-batch";
+const char* sessionNewPath  = "api/session/new";
+const char* sessionStopPath = "api/session/stop";
+
+WiFiUDP   coapUdp;
+IPAddress serverIP;
+bool      serverIPResolved   = false;
+uint16_t  nextCoapMessageId  = 0;
+uint16_t  nextCoapToken      = 0;
+
+uint8_t sensorPayloadBuf[900];
+uint8_t coapPacketBuf[1500];
+uint8_t coapReplyBuf[96];
 
 // ================================================================
 // 3. NaN / Inf GUARD
@@ -422,42 +442,197 @@ void updateFSM(float magnitude) {
 }
 
 // ================================================================
-// 7. HTTP POST HELPER (MUTE-ON-TX HACK)
+// 7. CoAP HELPERS
 // ================================================================
-bool postJson(const String& url, const String& payload) {
+bool resolveServerIP() {
+  if (serverIPResolved) return true;
   if (WiFi.status() != WL_CONNECTED) return false;
+  if (serverIP.fromString(serverHost)) {
+    serverIPResolved = true;
+    return true;
+  }
+  serverIPResolved = WiFi.hostByName(serverHost, serverIP);
+  return serverIPResolved;
+}
 
-  // 🛡️ HACK: Tắt còi tạm thời để dồn điện cho WiFi
+bool appendBytes(uint8_t* buffer, size_t capacity, size_t& offset, const void* data, size_t len) {
+  if (offset + len > capacity) return false;
+  memcpy(buffer + offset, data, len);
+  offset += len;
+  return true;
+}
+
+bool appendU16LE(uint8_t* buffer, size_t capacity, size_t& offset, uint16_t value) {
+  uint8_t raw[2] = { (uint8_t)(value & 0xFF), (uint8_t)((value >> 8) & 0xFF) };
+  return appendBytes(buffer, capacity, offset, raw, sizeof(raw));
+}
+
+bool appendU32LE(uint8_t* buffer, size_t capacity, size_t& offset, uint32_t value) {
+  uint8_t raw[4] = {
+    (uint8_t)(value & 0xFF),
+    (uint8_t)((value >> 8) & 0xFF),
+    (uint8_t)((value >> 16) & 0xFF),
+    (uint8_t)((value >> 24) & 0xFF)
+  };
+  return appendBytes(buffer, capacity, offset, raw, sizeof(raw));
+}
+
+bool appendFloatLE(uint8_t* buffer, size_t capacity, size_t& offset, float value) {
+  union { float f; uint8_t b[4]; } raw;
+  raw.f = value;
+  return appendBytes(buffer, capacity, offset, raw.b, sizeof(raw.b));
+}
+
+size_t buildSensorPayloadChunk(uint8_t* payload, size_t capacity,
+                               uint8_t chunkIndex, uint8_t totalChunks,
+                               uint8_t chunkSamples, uint16_t startIndex) {
+  size_t offset = 0;
+  uint8_t version = 2;
+  uint8_t flags = currentWindow.fall_detected ? 0x01 : 0x00;
+  uint8_t fsmState = (uint8_t)currentWindow.fsm_state;
+  uint8_t reserved = 0;
+  uint32_t windowStartMs = (uint32_t)max(0L, lroundf(currentWindow.samples[0].timestamp * 1000.0f));
+  uint16_t bpm = (uint16_t)max(currentWindow.bpm, 0);
+  uint32_t ir = (uint32_t)max(currentWindow.ir, 0L);
+
+  if (!appendBytes(payload, capacity, offset, &version, 1)) return 0;
+  if (!appendBytes(payload, capacity, offset, &flags, 1)) return 0;
+  if (!appendBytes(payload, capacity, offset, &fsmState, 1)) return 0;
+  if (!appendBytes(payload, capacity, offset, &reserved, 1)) return 0;
+  if (!appendU16LE(payload, capacity, offset, WINDOW_SIZE)) return 0;
+  if (!appendBytes(payload, capacity, offset, &chunkIndex, 1)) return 0;
+  if (!appendBytes(payload, capacity, offset, &totalChunks, 1)) return 0;
+  if (!appendBytes(payload, capacity, offset, &chunkSamples, 1)) return 0;
+  if (!appendBytes(payload, capacity, offset, &reserved, 1)) return 0;
+  if (!appendU16LE(payload, capacity, offset, SAMPLE_INTERVAL)) return 0;
+  if (!appendU32LE(payload, capacity, offset, windowStartMs)) return 0;
+  if (!appendU16LE(payload, capacity, offset, bpm)) return 0;
+  if (!appendU32LE(payload, capacity, offset, ir)) return 0;
+  if (!appendFloatLE(payload, capacity, offset, currentWindow.mag_avg)) return 0;
+  if (!appendFloatLE(payload, capacity, offset, currentWindow.sma)) return 0;
+  if (!appendFloatLE(payload, capacity, offset, currentWindow.max_a)) return 0;
+  if (!appendFloatLE(payload, capacity, offset, currentWindow.max_g)) return 0;
+  if (!appendFloatLE(payload, capacity, offset, currentWindow.std_accel)) return 0;
+  if (!appendFloatLE(payload, capacity, offset, currentWindow.jerk_peak)) return 0;
+
+  for (uint8_t localIndex = 0; localIndex < chunkSamples; localIndex++) {
+    const SensorSample& sample = currentWindow.samples[startIndex + localIndex];
+    if (!appendFloatLE(payload, capacity, offset, sample.timestamp)) return 0;
+    if (!appendFloatLE(payload, capacity, offset, sample.ax)) return 0;
+    if (!appendFloatLE(payload, capacity, offset, sample.ay)) return 0;
+    if (!appendFloatLE(payload, capacity, offset, sample.az)) return 0;
+    if (!appendFloatLE(payload, capacity, offset, sample.gx)) return 0;
+    if (!appendFloatLE(payload, capacity, offset, sample.gy)) return 0;
+    if (!appendFloatLE(payload, capacity, offset, sample.gz)) return 0;
+  }
+
+  return offset;
+}
+
+size_t buildCoapPostPacket(uint8_t* packet, size_t capacity, const char* path,
+                           const uint8_t* payload, size_t payloadLen,
+                           uint16_t messageId, uint16_t token) {
+  size_t offset = 0;
+  if (capacity < 6) return 0;
+  packet[offset++] = 0x42;
+  packet[offset++] = 0x02;
+  packet[offset++] = (uint8_t)(messageId >> 8);
+  packet[offset++] = (uint8_t)(messageId & 0xFF);
+  packet[offset++] = (uint8_t)(token >> 8);
+  packet[offset++] = (uint8_t)(token & 0xFF);
+
+  uint16_t lastOption = 0;
+  const char* segment = path;
+  while (*segment) {
+    while (*segment == '/') segment++;
+    if (!*segment) break;
+    const char* end = segment;
+    while (*end && *end != '/') end++;
+    uint8_t len = (uint8_t)(end - segment);
+    uint8_t delta = (lastOption == 0) ? 11 : 0;
+    if (len >= 13 || offset + 1 + len > capacity) return 0;
+    packet[offset++] = (uint8_t)((delta << 4) | len);
+    memcpy(packet + offset, segment, len);
+    offset += len;
+    lastOption = 11;
+    segment = end;
+  }
+
+  if (payloadLen > 0) {
+    if (offset + 1 + payloadLen > capacity) return 0;
+    packet[offset++] = 0xFF;
+    memcpy(packet + offset, payload, payloadLen);
+    offset += payloadLen;
+  }
+  return offset;
+}
+
+bool isSuccessCoapReply(const uint8_t* packet, size_t len, uint16_t messageId, uint16_t token) {
+  if (len < 6) return false;
+  uint8_t version = packet[0] >> 6;
+  uint8_t type = (packet[0] >> 4) & 0x03;
+  uint8_t tokenLen = packet[0] & 0x0F;
+  uint8_t code = packet[1];
+  uint16_t responseId = (uint16_t(packet[2]) << 8) | uint16_t(packet[3]);
+  uint16_t responseToken = (uint16_t(packet[4]) << 8) | uint16_t(packet[5]);
+  if (version != 1 || tokenLen != 2) return false;
+  if (type != 1 && type != 2) return false;
+  if (responseId != messageId || responseToken != token) return false;
+  return code >= 64 && code < 96;
+}
+
+bool sendCoapPost(const char* path, const uint8_t* payload, size_t payloadLen, uint16_t timeoutMs) {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (!resolveServerIP()) return false;
+
   bool wasBuzzerOn = (buzzerActive || beepPinHigh);
   if (wasBuzzerOn) setBuzzer(false);
 
-  HTTPClient http;
-  http.begin(url);
-  http.addHeader("Content-Type", "application/json");
-  http.setTimeout(3000);
-  int code = http.POST(payload);
-  http.end();
+  bool success = false;
+  for (int attempt = 0; attempt < COAP_MAX_RETRIES && !success; attempt++) {
+    uint16_t messageId = nextCoapMessageId++;
+    uint16_t token = nextCoapToken++;
+    size_t packetLen = buildCoapPostPacket(coapPacketBuf, sizeof(coapPacketBuf),
+                                           path, payload, payloadLen, messageId, token);
+    if (packetLen == 0) break;
+    if (!coapUdp.beginPacket(serverIP, serverPort)) continue;
+    coapUdp.write(coapPacketBuf, packetLen);
+    if (!coapUdp.endPacket()) continue;
 
-  // 🛡️ Bật lại còi sau khi gửi xong
+    unsigned long startedAt = millis();
+    while (millis() - startedAt < timeoutMs) {
+      int incoming = coapUdp.parsePacket();
+      if (incoming > 0) {
+        int toRead = min(incoming, (int)sizeof(coapReplyBuf));
+        int readLen = coapUdp.read(coapReplyBuf, toRead);
+        if (readLen > 0 && isSuccessCoapReply(coapReplyBuf, (size_t)readLen, messageId, token)) {
+          success = true;
+          break;
+        }
+      }
+      delay(5);
+      yield();
+    }
+  }
+
   if (wasBuzzerOn) setBuzzer(true);
-
-  return code > 0;
+  return success;
 }
 
 void newSession() {
-  if (postJson(sessionNewEndpoint, "{}"))
-    Serial.println("✓ Session created (server)");
+  if (sendCoapPost(sessionNewPath, nullptr, 0, 700))
+    Serial.println("✓ Session created (CoAP)");
   else
-    Serial.println("⚠ Server unreachable – offline mode");
+    Serial.println("⚠ CoAP server unreachable – offline mode");
 }
 
-void stopSession() { postJson(sessionStopEndpoint, "{}"); }
+void stopSession() {
+  sendCoapPost(sessionStopPath, nullptr, 0, 700);
+}
 
 // ================================================================
-// 8. GỬI DATA TRỰC TIẾP (MUTE-ON-TX HACK)
+// 8. GỬI DATA TRỰC TIẾP QUA CoAP
 // ================================================================
-StaticJsonDocument<16384> gDoc; 
-
 void sendWindow() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.printf("📡 Offline | Mag:%.1f | FSM:%d\n",
@@ -465,66 +640,33 @@ void sendWindow() {
     return;
   }
 
-  gDoc.clear();
-  gDoc["status"]        = "active";
-  gDoc["bpm"]           = currentWindow.bpm;
-  gDoc["ir_raw"]        = currentWindow.ir;
-  gDoc["window_size"]   = WINDOW_SIZE;
-  gDoc["sample_rate"]   = 50;
-  gDoc["fsm_state"]     = currentWindow.fsm_state;
-  gDoc["fall_detected"] = currentWindow.fall_detected;
+  const uint8_t totalChunks = (WINDOW_SIZE + COAP_CHUNK_SAMPLES - 1) / COAP_CHUNK_SAMPLES;
+  bool allOk = true;
+  size_t totalBytes = 0;
 
-  JsonObject features = gDoc.createNestedObject("features");
-  features["magnitude_avg"] = currentWindow.mag_avg;
-  features["sma"]           = currentWindow.sma;
-  features["max_accel"]     = currentWindow.max_a;
-  features["max_gyro"]      = currentWindow.max_g;
-  features["std_accel"]     = currentWindow.std_accel;
-  features["jerk_peak"]     = currentWindow.jerk_peak;
+  for (uint8_t chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+    const uint16_t startIndex = chunkIndex * COAP_CHUNK_SAMPLES;
+    const uint8_t chunkSamples = min((int)COAP_CHUNK_SAMPLES, WINDOW_SIZE - startIndex);
+    size_t payloadLen = buildSensorPayloadChunk(sensorPayloadBuf, sizeof(sensorPayloadBuf),
+                                                chunkIndex, totalChunks, chunkSamples, startIndex);
+    if (payloadLen == 0) {
+      Serial.printf("✗ Payload build failed | Chunk:%u | Heap:%u\n", chunkIndex, ESP.getFreeHeap());
+      allOk = false;
+      break;
+    }
 
-  JsonArray accel_data = gDoc.createNestedArray("accel_data");
-  JsonArray gyro_data  = gDoc.createNestedArray("gyro_data");
-
-  for (int i = 0; i < WINDOW_SIZE; i++) {
-    JsonObject a = accel_data.createNestedObject();
-    a["t"] = currentWindow.samples[i].timestamp;
-    a["x"] = currentWindow.samples[i].ax;
-    a["y"] = currentWindow.samples[i].ay;
-    a["z"] = currentWindow.samples[i].az;
-
-    JsonObject g = gyro_data.createNestedObject();
-    g["t"] = currentWindow.samples[i].timestamp;
-    g["x"] = currentWindow.samples[i].gx;
-    g["y"] = currentWindow.samples[i].gy;
-    g["z"] = currentWindow.samples[i].gz;
+    totalBytes += payloadLen;
+    if (!sendCoapPost(batchPath, sensorPayloadBuf, payloadLen, COAP_ACK_TIMEOUT_MS)) {
+      allOk = false;
+      Serial.printf("✗ CoAP timeout | Chunk:%u/%u | Mag:%.1f | Heap:%u\n",
+                    chunkIndex + 1, totalChunks, currentWindow.mag_avg, ESP.getFreeHeap());
+      break;
+    }
   }
 
-  String jsonStr;
-  size_t jsonLen = measureJson(gDoc);
-  jsonStr.reserve(jsonLen + 1);
-  serializeJson(gDoc, jsonStr);
-
-  HTTPClient http;
-  http.begin(batchEndpoint);
-  http.addHeader("Content-Type", "application/json");
-  http.setTimeout(900);
-
-  // 🛡️ HACK: Tắt còi tạm thời (để tránh Brownout)
-  bool wasBuzzerOn = (buzzerActive || beepPinHigh);
-  if (wasBuzzerOn) setBuzzer(false);
-
-  int code = http.POST(jsonStr); // Bắn Data
-
-  // 🛡️ Bật lại còi sau khi WiFi rảnh tay
-  if (wasBuzzerOn) setBuzzer(true);
-
-  if (code > 0)
-    Serial.printf("✓ Sent | HTTP %d | Mag:%.1f | Heap:%u\n",
-                  code, currentWindow.mag_avg, ESP.getFreeHeap());
-  else
-    Serial.printf("✗ HTTP %s | Heap:%u\n",
-                  http.errorToString(code).c_str(), ESP.getFreeHeap());
-  http.end();
+  if (allOk)
+    Serial.printf("✓ Sent | CoAP %u chunks | %uB | Mag:%.1f | Heap:%u\n",
+                  totalChunks, (unsigned)totalBytes, currentWindow.mag_avg, ESP.getFreeHeap());
 }
 
 // ================================================================
@@ -547,19 +689,24 @@ void setup() {
     ledcWrite(0, 0);
   #endif
 
-  batchEndpoint      = String(serverBase) + "/api/sensor-batch";
-  sessionNewEndpoint = String(serverBase) + "/api/session/new";
-  sessionStopEndpoint= String(serverBase) + "/api/session/stop";
-
   WiFi.begin(ssid, password);
   Serial.print("WiFi connecting");
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) { delay(500); Serial.print("."); attempts++; }
 
-  if (WiFi.status() == WL_CONNECTED)
+  coapUdp.begin(COAP_LOCAL_PORT);
+  nextCoapMessageId = (uint16_t)esp_random();
+  nextCoapToken = (uint16_t)(esp_random() & 0xFFFF);
+
+  if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("\n✓ WiFi OK – IP: %s\n", WiFi.localIP().toString().c_str());
-  else
+    if (resolveServerIP())
+      Serial.printf("✓ CoAP target – %s:%u\n", serverIP.toString().c_str(), serverPort);
+    else
+      Serial.println("⚠ CoAP target unresolved");
+  } else {
     Serial.println("\n⚠ WiFi FAIL – running OFFLINE");
+  }
 
   Wire.begin(I2C_SDA, I2C_SCL);
   Wire.setClock(400000);
@@ -586,6 +733,7 @@ void setup() {
   Serial.println("╠═══════════════════════════════════════╣");
   Serial.println("║  Short press : START / NEW SESSION    ║");
   Serial.println("║  Long press  : STOP                   ║");
+  Serial.println("║  Transport   : CoAP / UDP             ║");
   Serial.println("║  Buzzer pin  : GPIO 18 (PWM MODE)     ║");
   Serial.println("╚═══════════════════════════════════════╝");
 }
@@ -805,7 +953,7 @@ void handleButton() {
       freefallSampleCount = 0;
       fallDetectedFlag    = false;
 
-      stopSession();           // HTTP trước khi beep → tránh brownout
+      stopSession();           // CoAP trước khi beep → tránh brownout
       yield();
       beepBlocking(1, 400, 0);           
       Serial.println("\n>>> SYSTEM STOPPED");
