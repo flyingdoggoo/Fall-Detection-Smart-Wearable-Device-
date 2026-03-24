@@ -17,8 +17,8 @@ else:
     TENSORFLOW_IMPORT_ERROR = None
 
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "model_config_colab.json"
-DEFAULT_SCALER_PATH = Path(__file__).resolve().parent / "config" / "scaler_colab.pkl"
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "config_v1.json"
+DEFAULT_SCALER_PATH = Path(__file__).resolve().parent / "config" / "scaler_v1.pkl"
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "model" / "model_v4.keras"
 DEFAULT_LEARNING_RATE = 1e-3
 
@@ -86,13 +86,13 @@ class FallPredictor:
         self.scaler_path = Path(os.getenv("ML_SCALER_PATH", DEFAULT_SCALER_PATH))
         self.config = self._load_config()
 
-        configured_threshold = _safe_float(self.config.get("threshold"), 0.8)
-        env_threshold = os.getenv("ML_FALL_THRESHOLD")
-        resolved_threshold = threshold if threshold is not None else env_threshold
-        if resolved_threshold is None:
-            resolved_threshold = configured_threshold
+        configured_threshold = _safe_float(self.config.get("threshold"), 0.5)
 
-        self.threshold = _clip01(_safe_float(resolved_threshold, configured_threshold))
+        if threshold is not None:
+            self.threshold = _clip01(_safe_float(threshold, configured_threshold))
+        else:
+            self.threshold = _clip01(configured_threshold)
+
         self.window_size = int(self.config.get("window_size", 100) or 100)
         self.num_channels = int(self.config.get("num_channels", 6) or 6)
         self.model_version = self.model_path.stem

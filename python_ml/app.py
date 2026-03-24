@@ -46,7 +46,7 @@ def predict():
     except Exception as exc:
         app.logger.exception("[/predict] failed")
         return jsonify({"error": str(exc)}), 500
-    app.logger.info("[/predict] response %s", result)
+    app.logger.info("[/predict] response %s", summarize_predict_response(result))
     return jsonify(result)
 
 
@@ -66,6 +66,14 @@ def summarize_predict_payload(payload):
             "std_accel": features.get("std_accel"),
             "jerk_peak": features.get("jerk_peak"),
         },
+    }
+
+
+def summarize_predict_response(result):
+    return {
+        "fall_detected": result.get("fall_detected"),
+        "confidence": result.get("confidence"),
+        "threshold": result.get("threshold"),
     }
 
 

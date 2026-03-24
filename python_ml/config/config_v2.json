@@ -1,0 +1,35 @@
+{
+  "version": "v2",
+  "architecture": "CNN + BiLSTM + MultiHeadAttention",
+  "augmentation": "none",
+  "sample_rate": 50,
+  "window_size": 100,
+  "num_channels": 6,
+  "overlap_ratio": 0.5,
+  "threshold": 0.7812321186065674,
+  "threshold_recall92": 0.864091157913208,
+  "class_names": [
+    "Normal",
+    "Fall"
+  ],
+  "metrics": {
+    "test_accuracy": 0.9231,
+    "test_precision": 0.8978,
+    "test_recall": 0.9462,
+    "test_f1": 0.9113,
+    "test_auc_roc": 0.9859,
+    "test_auc_pr": 0.9845,
+    "confusion": {
+      "TN": 138,
+      "FP": 5,
+      "FN": 17,
+      "TP": 113
+    }
+  },
+  "dataset": {
+    "total_sessions": 293,
+    "train_windows": 1312,
+    "val_windows": 232,
+    "test_windows": 273
+  }
+}
