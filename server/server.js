@@ -428,8 +428,7 @@ app.post('/api/mark-fall',(req,res)=>{
   console.log(`🔴 Fall marked at ${elapsedSeconds.toFixed(1)}s`);
   res.json({success:true,elapsed_seconds:elapsedSeconds,marker_count:fallMarkers.length});
 });
-// ASDKSAKD
-// ASDSAKDAL
+
 app.get('/api/sessions/stats',(req,res)=>{
   const countDirs=(dirPath)=>{
     if(!fs.existsSync(dirPath)) return 0;
