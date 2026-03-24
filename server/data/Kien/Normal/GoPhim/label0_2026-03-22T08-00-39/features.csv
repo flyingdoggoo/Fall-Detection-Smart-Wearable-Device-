@@ -1,0 +1,2 @@
+window_time,magnitude_avg,sma,max_accel,max_gyro,std_accel,jerk_peak,bpm,fsm_state,fall_detected
+2.77,10.86569,4.455144,11.63287,0.366077,0.118781,15.37695,32,0,0

@@ -1,0 +1,8 @@
+{
+  "session_id": "label0_2026-03-16T15-56-41",
+  "start_time": "2026-03-16T15:56:41.248Z",
+  "device": "ESP32-C3 + MPU6050 + MAX30102",
+  "sample_rate": 50,
+  "window_size": 100,
+  "label": 0
+}
