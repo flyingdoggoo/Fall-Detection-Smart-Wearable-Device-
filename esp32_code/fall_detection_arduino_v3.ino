@@ -26,6 +26,7 @@ const uint16_t serverPort = 5683;
 #define I2C_SCL         5
 #define BUTTON_PIN      9
 #define BUZZER_PIN      18      // Chân buzzer cảnh báo ngã (OFFLINE)
+#define BUZZER_DUTY_ON  24      // 24/255 ~ 9.4% duty -> giảm dòng đột biến
 #define SAMPLE_INTERVAL 20      // 50 Hz = 20 ms
 #define WINDOW_SIZE     100     // 100 mẫu = 2 giây / window
 #define COAP_LOCAL_PORT 56830
@@ -278,14 +279,14 @@ SimpleKalmanFilter kf_ax(2, 2, 0.02), kf_ay(2, 2, 0.02), kf_az(2, 2, 0.02);
 SimpleKalmanFilter kf_gx(0.5, 0.5, 0.015), kf_gy(0.5, 0.5, 0.015), kf_gz(0.5, 0.5, 0.015);
 
 // ================================================================
-// 5. BUZZER CONTROL (PWM THROTTLE) - GIẢM 94% DÒNG ĐIỆN
+// 5. BUZZER CONTROL (PWM THROTTLE) - GIẢM DÒNG ĐIỆN ĐỈNH
 // ================================================================
 void setBuzzer(bool state) {
   if (state) {
     #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
-      ledcWrite(BUZZER_PIN, 255); // ESP32 Core 3.x (15/255 = ~6% công suất)
+      ledcWrite(BUZZER_PIN, BUZZER_DUTY_ON); // ESP32 Core 3.x
     #else
-      ledcWrite(0, 255);          // ESP32 Core 2.x 
+      ledcWrite(0, BUZZER_DUTY_ON);          // ESP32 Core 2.x 
     #endif
   } else {
     #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
@@ -348,15 +349,6 @@ void beepSilenced()   { startBeepPattern(2, 50, 80);  }
 void beepNewSession() { startBeepPattern(3, 50, 80);  }  
 void beepStopped()    { startBeepPattern(1, 400, 0);  }  
 void beepStarted()    { startBeepPattern(2, 120, 100); } 
-
-void beepBlocking(int count, int onMs, int offMs) {
-  for (int i = 0; i < count; i++) {
-    setBuzzer(true);
-    delay(onMs);
-    setBuzzer(false);
-    if (i < count - 1) delay(offMs);
-  }
-}
 
 // ================================================================
 // 6. FSM
@@ -882,9 +874,7 @@ void loop() {
 // 11. BUTTON HANDLER 
 // ================================================================
 void handleButton() {
-  if (fallState == FSM_FALL_CONFIRMED || buzzerActive) {
-    return;
-  }
+  bool lockShortPress = (fallState == FSM_FALL_CONFIRMED || buzzerActive);
 
   static int buttonState = HIGH;
   static int lastButtonState = HIGH;
@@ -911,7 +901,7 @@ void handleButton() {
       else {
         isPressing = false;
         
-        if (!longPressHandled) {
+        if (!longPressHandled && !lockShortPress) {
           if (!systemState) {
             systemState  = true;
             startTime    = millis();
@@ -923,7 +913,7 @@ void handleButton() {
 
             newSession();
             yield();
-            beepBlocking(2, 100, 100);
+            beepStarted();
             Serial.println("\n>>> SYSTEM RUNNING");
           } else {
             startTime   = millis();
@@ -935,7 +925,7 @@ void handleButton() {
 
             newSession();
             yield();
-            beepBlocking(3, 80, 80);
+            beepNewSession();
             Serial.println("\n>>> NEW SESSION");
           }
         }
@@ -955,7 +945,7 @@ void handleButton() {
 
       stopSession();           // CoAP trước khi beep → tránh brownout
       yield();
-      beepBlocking(1, 400, 0);           
+      beepStopped();           
       Serial.println("\n>>> SYSTEM STOPPED");
     }
   }
