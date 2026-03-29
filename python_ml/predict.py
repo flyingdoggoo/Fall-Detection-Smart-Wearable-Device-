@@ -17,8 +17,8 @@ else:
     TENSORFLOW_IMPORT_ERROR = None
 
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "config_v1.json"
-DEFAULT_SCALER_PATH = Path(__file__).resolve().parent / "config" / "scaler_v1.pkl"
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "config_v2.json"
+DEFAULT_SCALER_PATH = Path(__file__).resolve().parent / "config" / "scaler_v2.pkl"
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "model" / "model_v4.keras"
 DEFAULT_LEARNING_RATE = 1e-3
 
