@@ -9,3 +9,7 @@ const char* serverBase = "http://192.168.1.7:3000";
 const char* ssid       = "Veitel";
 const char* password   = "12345668";
 const char* serverBase = "http://10.120.115.2:3000";
+
+const char* ssid       = "Giat Ui Tigon 1";
+const char* password   = "789789789";
+const char* serverBase = "http://
