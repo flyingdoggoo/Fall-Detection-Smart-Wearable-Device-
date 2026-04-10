@@ -8,17 +8,17 @@
 // ================================================================
 // 1. CẤU HÌNH WIFI & SERVER
 // ================================================================
-const char* ssid       = "ITF - Da Nang";
-const char* password   = "888888888";
-const char* serverHost = "172.20.10.2";
+// const char* ssid       = "ITF - Da Nang";
+// const char* password   = "888888888";
+// const char* serverHost = "172.20.10.3";
 
 // const char* ssid       = "Giat Ui Tigon 1"; 
 // const char* password   = "789789789";
 // const char* serverHost = "192.168.1.7";
 
-// const char* ssid       = "Veitel";
-// const char* password   = "12345667";
-// const char* serverHost = "10.120.115.150";
+const char* ssid       = "Veitel";
+const char* password   = "12345667";
+const char* serverHost = "10.120.115.2";
 const uint16_t serverPort = 5683;
 
 
@@ -26,12 +26,17 @@ const uint16_t serverPort = 5683;
 #define I2C_SCL         5
 #define BUTTON_PIN      9
 #define BUZZER_PIN      18      // Chân buzzer cảnh báo ngã (OFFLINE)
+#define BUZZER_DUTY_ON  255      // 24/255 ~ 9.4% duty -> giảm dòng đột biến
 #define SAMPLE_INTERVAL 20      // 50 Hz = 20 ms
 #define WINDOW_SIZE     100     // 100 mẫu = 2 giây / window
 #define COAP_LOCAL_PORT 56830
 #define COAP_ACK_TIMEOUT_MS 250
 #define COAP_MAX_RETRIES 2
 #define COAP_CHUNK_SAMPLES 25
+
+#define SENSOR_PACKET_VERSION_LEGACY 1
+#define ACCEL_SCALE_LEGACY 400.0f
+#define GYRO_SCALE_LEGACY 1000.0f
 
 // ================================================================
 // MAX30102 – CHỈ BẬT LED + ĐỌC IR ĐỂ DETECT NGÓN TAY
@@ -140,7 +145,7 @@ bool      serverIPResolved   = false;
 uint16_t  nextCoapMessageId  = 0;
 uint16_t  nextCoapToken      = 0;
 
-uint8_t sensorPayloadBuf[900];
+uint8_t sensorPayloadBuf[1300];
 uint8_t coapPacketBuf[1500];
 uint8_t coapReplyBuf[96];
 
@@ -278,14 +283,14 @@ SimpleKalmanFilter kf_ax(2, 2, 0.02), kf_ay(2, 2, 0.02), kf_az(2, 2, 0.02);
 SimpleKalmanFilter kf_gx(0.5, 0.5, 0.015), kf_gy(0.5, 0.5, 0.015), kf_gz(0.5, 0.5, 0.015);
 
 // ================================================================
-// 5. BUZZER CONTROL (PWM THROTTLE) - GIẢM 94% DÒNG ĐIỆN
+// 5. BUZZER CONTROL (PWM THROTTLE) - GIẢM DÒNG ĐIỆN ĐỈNH
 // ================================================================
 void setBuzzer(bool state) {
   if (state) {
     #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
-      ledcWrite(BUZZER_PIN, 255); // ESP32 Core 3.x (15/255 = ~6% công suất)
+      ledcWrite(BUZZER_PIN, BUZZER_DUTY_ON); // ESP32 Core 3.x
     #else
-      ledcWrite(0, 255);          // ESP32 Core 2.x 
+      ledcWrite(0, BUZZER_DUTY_ON);          // ESP32 Core 2.x 
     #endif
   } else {
     #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
@@ -348,15 +353,6 @@ void beepSilenced()   { startBeepPattern(2, 50, 80);  }
 void beepNewSession() { startBeepPattern(3, 50, 80);  }  
 void beepStopped()    { startBeepPattern(1, 400, 0);  }  
 void beepStarted()    { startBeepPattern(2, 120, 100); } 
-
-void beepBlocking(int count, int onMs, int offMs) {
-  for (int i = 0; i < count; i++) {
-    setBuzzer(true);
-    delay(onMs);
-    setBuzzer(false);
-    if (i < count - 1) delay(offMs);
-  }
-}
 
 // ================================================================
 // 6. FSM
@@ -477,10 +473,63 @@ bool appendU32LE(uint8_t* buffer, size_t capacity, size_t& offset, uint32_t valu
   return appendBytes(buffer, capacity, offset, raw, sizeof(raw));
 }
 
+bool appendI16LE(uint8_t* buffer, size_t capacity, size_t& offset, int16_t value) {
+  uint8_t raw[2] = { (uint8_t)(value & 0xFF), (uint8_t)((value >> 8) & 0xFF) };
+  return appendBytes(buffer, capacity, offset, raw, sizeof(raw));
+}
+
 bool appendFloatLE(uint8_t* buffer, size_t capacity, size_t& offset, float value) {
   union { float f; uint8_t b[4]; } raw;
   raw.f = value;
   return appendBytes(buffer, capacity, offset, raw.b, sizeof(raw.b));
+}
+
+int16_t quantizeToI16(float value, float scale) {
+  float scaled = value * scale;
+  if (scaled > 32767.0f) scaled = 32767.0f;
+  if (scaled < -32768.0f) scaled = -32768.0f;
+  return (int16_t)lroundf(scaled);
+}
+
+size_t buildSensorPayloadLegacy(uint8_t* payload, size_t capacity) {
+  size_t offset = 0;
+  uint8_t version = SENSOR_PACKET_VERSION_LEGACY;
+  uint8_t flags = currentWindow.fall_detected ? 0x01 : 0x00;
+  uint8_t fsmState = (uint8_t)currentWindow.fsm_state;
+  uint8_t reserved = 0;
+  uint16_t windowSize = WINDOW_SIZE;
+  uint16_t sampleInterval = SAMPLE_INTERVAL;
+  uint32_t windowStartMs = (uint32_t)max(0L, lroundf(currentWindow.samples[0].timestamp * 1000.0f));
+  uint16_t bpm = (uint16_t)max(currentWindow.bpm, 0);
+  uint32_t ir = (uint32_t)max(currentWindow.ir, 0L);
+
+  if (!appendBytes(payload, capacity, offset, &version, 1)) return 0;
+  if (!appendBytes(payload, capacity, offset, &flags, 1)) return 0;
+  if (!appendBytes(payload, capacity, offset, &fsmState, 1)) return 0;
+  if (!appendBytes(payload, capacity, offset, &reserved, 1)) return 0;
+  if (!appendU16LE(payload, capacity, offset, windowSize)) return 0;
+  if (!appendU16LE(payload, capacity, offset, sampleInterval)) return 0;
+  if (!appendU32LE(payload, capacity, offset, windowStartMs)) return 0;
+  if (!appendU16LE(payload, capacity, offset, bpm)) return 0;
+  if (!appendU32LE(payload, capacity, offset, ir)) return 0;
+  if (!appendFloatLE(payload, capacity, offset, currentWindow.mag_avg)) return 0;
+  if (!appendFloatLE(payload, capacity, offset, currentWindow.sma)) return 0;
+  if (!appendFloatLE(payload, capacity, offset, currentWindow.max_a)) return 0;
+  if (!appendFloatLE(payload, capacity, offset, currentWindow.max_g)) return 0;
+  if (!appendFloatLE(payload, capacity, offset, currentWindow.std_accel)) return 0;
+  if (!appendFloatLE(payload, capacity, offset, currentWindow.jerk_peak)) return 0;
+
+  for (uint16_t i = 0; i < WINDOW_SIZE; i++) {
+    const SensorSample& sample = currentWindow.samples[i];
+    if (!appendI16LE(payload, capacity, offset, quantizeToI16(sample.ax, ACCEL_SCALE_LEGACY))) return 0;
+    if (!appendI16LE(payload, capacity, offset, quantizeToI16(sample.ay, ACCEL_SCALE_LEGACY))) return 0;
+    if (!appendI16LE(payload, capacity, offset, quantizeToI16(sample.az, ACCEL_SCALE_LEGACY))) return 0;
+    if (!appendI16LE(payload, capacity, offset, quantizeToI16(sample.gx, GYRO_SCALE_LEGACY))) return 0;
+    if (!appendI16LE(payload, capacity, offset, quantizeToI16(sample.gy, GYRO_SCALE_LEGACY))) return 0;
+    if (!appendI16LE(payload, capacity, offset, quantizeToI16(sample.gz, GYRO_SCALE_LEGACY))) return 0;
+  }
+
+  return offset;
 }
 
 size_t buildSensorPayloadChunk(uint8_t* payload, size_t capacity,
@@ -531,10 +580,11 @@ size_t buildSensorPayloadChunk(uint8_t* payload, size_t capacity,
 
 size_t buildCoapPostPacket(uint8_t* packet, size_t capacity, const char* path,
                            const uint8_t* payload, size_t payloadLen,
-                           uint16_t messageId, uint16_t token) {
+                           uint16_t messageId, uint16_t token,
+                           bool confirmable) {
   size_t offset = 0;
   if (capacity < 6) return 0;
-  packet[offset++] = 0x42;
+  packet[offset++] = confirmable ? 0x42 : 0x52;
   packet[offset++] = 0x02;
   packet[offset++] = (uint8_t)(messageId >> 8);
   packet[offset++] = (uint8_t)(messageId & 0xFF);
@@ -581,7 +631,8 @@ bool isSuccessCoapReply(const uint8_t* packet, size_t len, uint16_t messageId, u
   return code >= 64 && code < 96;
 }
 
-bool sendCoapPost(const char* path, const uint8_t* payload, size_t payloadLen, uint16_t timeoutMs) {
+bool sendCoapPost(const char* path, const uint8_t* payload, size_t payloadLen,
+                  uint16_t timeoutMs, bool waitAck = true) {
   if (WiFi.status() != WL_CONNECTED) return false;
   if (!resolveServerIP()) return false;
 
@@ -589,15 +640,21 @@ bool sendCoapPost(const char* path, const uint8_t* payload, size_t payloadLen, u
   if (wasBuzzerOn) setBuzzer(false);
 
   bool success = false;
-  for (int attempt = 0; attempt < COAP_MAX_RETRIES && !success; attempt++) {
+  const int maxAttempts = waitAck ? COAP_MAX_RETRIES : 1;
+  for (int attempt = 0; attempt < maxAttempts && !success; attempt++) {
     uint16_t messageId = nextCoapMessageId++;
     uint16_t token = nextCoapToken++;
     size_t packetLen = buildCoapPostPacket(coapPacketBuf, sizeof(coapPacketBuf),
-                                           path, payload, payloadLen, messageId, token);
+                                           path, payload, payloadLen, messageId, token, waitAck);
     if (packetLen == 0) break;
     if (!coapUdp.beginPacket(serverIP, serverPort)) continue;
     coapUdp.write(coapPacketBuf, packetLen);
     if (!coapUdp.endPacket()) continue;
+
+    if (!waitAck) {
+      success = true;
+      break;
+    }
 
     unsigned long startedAt = millis();
     while (millis() - startedAt < timeoutMs) {
@@ -620,14 +677,14 @@ bool sendCoapPost(const char* path, const uint8_t* payload, size_t payloadLen, u
 }
 
 void newSession() {
-  if (sendCoapPost(sessionNewPath, nullptr, 0, 700))
+  if (sendCoapPost(sessionNewPath, nullptr, 0, 700, true))
     Serial.println("✓ Session created (CoAP)");
   else
     Serial.println("⚠ CoAP server unreachable – offline mode");
 }
 
 void stopSession() {
-  sendCoapPost(sessionStopPath, nullptr, 0, 700);
+  sendCoapPost(sessionStopPath, nullptr, 0, 700, true);
 }
 
 // ================================================================
@@ -640,33 +697,19 @@ void sendWindow() {
     return;
   }
 
-  const uint8_t totalChunks = (WINDOW_SIZE + COAP_CHUNK_SAMPLES - 1) / COAP_CHUNK_SAMPLES;
-  bool allOk = true;
-  size_t totalBytes = 0;
-
-  for (uint8_t chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-    const uint16_t startIndex = chunkIndex * COAP_CHUNK_SAMPLES;
-    const uint8_t chunkSamples = min((int)COAP_CHUNK_SAMPLES, WINDOW_SIZE - startIndex);
-    size_t payloadLen = buildSensorPayloadChunk(sensorPayloadBuf, sizeof(sensorPayloadBuf),
-                                                chunkIndex, totalChunks, chunkSamples, startIndex);
-    if (payloadLen == 0) {
-      Serial.printf("✗ Payload build failed | Chunk:%u | Heap:%u\n", chunkIndex, ESP.getFreeHeap());
-      allOk = false;
-      break;
-    }
-
-    totalBytes += payloadLen;
-    if (!sendCoapPost(batchPath, sensorPayloadBuf, payloadLen, COAP_ACK_TIMEOUT_MS)) {
-      allOk = false;
-      Serial.printf("✗ CoAP timeout | Chunk:%u/%u | Mag:%.1f | Heap:%u\n",
-                    chunkIndex + 1, totalChunks, currentWindow.mag_avg, ESP.getFreeHeap());
-      break;
-    }
+  size_t payloadLen = buildSensorPayloadLegacy(sensorPayloadBuf, sizeof(sensorPayloadBuf));
+  if (payloadLen == 0) {
+    Serial.printf("✗ Payload build failed | Heap:%u\n", ESP.getFreeHeap());
+    return;
   }
 
-  if (allOk)
-    Serial.printf("✓ Sent | CoAP %u chunks | %uB | Mag:%.1f | Heap:%u\n",
-                  totalChunks, (unsigned)totalBytes, currentWindow.mag_avg, ESP.getFreeHeap());
+  if (sendCoapPost(batchPath, sensorPayloadBuf, payloadLen, COAP_ACK_TIMEOUT_MS, false)) {
+    Serial.printf("✓ Sent | CoAP 1 packet | %uB | Mag:%.1f | Heap:%u\n",
+                  (unsigned)payloadLen, currentWindow.mag_avg, ESP.getFreeHeap());
+  } else {
+    Serial.printf("✗ CoAP send failed | Mag:%.1f | Heap:%u\n",
+                  currentWindow.mag_avg, ESP.getFreeHeap());
+  }
 }
 
 // ================================================================
@@ -693,6 +736,10 @@ void setup() {
   Serial.print("WiFi connecting");
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) { delay(500); Serial.print("."); attempts++; }
+
+  #if defined(WIFI_POWER_8_5dBm)
+    WiFi.setTxPower(WIFI_POWER_8_5dBm); // Giảm đỉnh dòng khi phát WiFi để chạy pin ổn định hơn
+  #endif
 
   coapUdp.begin(COAP_LOCAL_PORT);
   nextCoapMessageId = (uint16_t)esp_random();
@@ -882,9 +929,7 @@ void loop() {
 // 11. BUTTON HANDLER 
 // ================================================================
 void handleButton() {
-  if (fallState == FSM_FALL_CONFIRMED || buzzerActive) {
-    return;
-  }
+  bool lockShortPress = (fallState == FSM_FALL_CONFIRMED || buzzerActive);
 
   static int buttonState = HIGH;
   static int lastButtonState = HIGH;
@@ -911,7 +956,7 @@ void handleButton() {
       else {
         isPressing = false;
         
-        if (!longPressHandled) {
+        if (!longPressHandled && !lockShortPress) {
           if (!systemState) {
             systemState  = true;
             startTime    = millis();
@@ -923,7 +968,7 @@ void handleButton() {
 
             newSession();
             yield();
-            beepBlocking(2, 100, 100);
+            beepStarted();
             Serial.println("\n>>> SYSTEM RUNNING");
           } else {
             startTime   = millis();
@@ -935,7 +980,7 @@ void handleButton() {
 
             newSession();
             yield();
-            beepBlocking(3, 80, 80);
+            beepNewSession();
             Serial.println("\n>>> NEW SESSION");
           }
         }
@@ -955,7 +1000,7 @@ void handleButton() {
 
       stopSession();           // CoAP trước khi beep → tránh brownout
       yield();
-      beepBlocking(1, 400, 0);           
+      beepStopped();           
       Serial.println("\n>>> SYSTEM STOPPED");
     }
   }
