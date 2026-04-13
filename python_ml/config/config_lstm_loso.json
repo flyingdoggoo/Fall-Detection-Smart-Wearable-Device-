@@ -1,0 +1,20 @@
+{
+  "version": "v3_final_tuned",
+  "architecture": "CNN + LSTM + MHA",
+  "train_mode": "all_subjects_deploy",
+  "hyperparameters": {
+    "drop_rate": 0.4,
+    "l2_reg": 0.0002,
+    "lr": 0.0005,
+    "lstm_units": 64
+  },
+  "deployment_threshold": 0.4692416191101074,
+  "n_hot_windows": 5,
+  "sample_rate": 50,
+  "window_size": 100,
+  "loso_summary": {
+    "mean_f1": 0.9174,
+    "mean_recall": 0.9309,
+    "mean_auc_roc": 0.9736
+  }
+}

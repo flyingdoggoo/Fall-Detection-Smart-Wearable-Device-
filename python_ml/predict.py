@@ -17,45 +17,49 @@ else:
     TENSORFLOW_IMPORT_ERROR = None
 
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "config_v2.json"
-DEFAULT_SCALER_PATH = Path(__file__).resolve().parent / "config" / "scaler_v2.pkl"
-DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "model" / "model_v4.keras"
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "config_lstm_loso.json"
+DEFAULT_SCALER_PATH = Path(__file__).resolve().parent / "config" / "scaler_lstm_loso.pkl"
+DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "model" / "lstm_loso.keras"
 DEFAULT_LEARNING_RATE = 1e-3
 
 
 if tf is not None:
 
-    @tf.keras.utils.register_keras_serializable(package="FallDetection")
-    class SelfAttention(tf.keras.layers.Layer):
-        def __init__(self, units: int, **kwargs):
+    try:
+        register_serializable = tf.keras.utils.register_keras_serializable
+    except AttributeError:
+        def register_serializable(**kwargs):
+            def decorator(cls):
+                return cls
+            return decorator
+
+    @register_serializable(package="FallDetectionV3")
+    class MultiHeadSelfAttention(tf.keras.layers.Layer):
+        def __init__(self, num_heads: int = 4, key_dim: int = 16, **kwargs):
             super().__init__(**kwargs)
-            self.units = units
-            self.W = tf.keras.layers.Dense(units, name="W")
-            self.V = tf.keras.layers.Dense(1, name="V")
+            self.num_heads = num_heads
+            self.key_dim = key_dim
 
         def build(self, input_shape):
-            self.W.build(input_shape)
-            w_output_shape = tf.TensorShape(input_shape[:-1]).concatenate(self.units)
-            self.V.build(w_output_shape)
+            self.mha = tf.keras.layers.MultiHeadAttention(
+                num_heads=self.num_heads,
+                key_dim=self.key_dim,
+                dropout=0.1,
+            )
+            self.norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
             super().build(input_shape)
 
-        def call(self, inputs):
-            score = tf.nn.tanh(self.W(inputs))
-            attention_weights = tf.nn.softmax(self.V(score), axis=1)
-            attention_weights = tf.cast(attention_weights, inputs.dtype)
-            context_vector = attention_weights * inputs
-            return tf.reduce_sum(context_vector, axis=1)
-
-        def compute_output_shape(self, input_shape):
-            return tf.TensorShape((input_shape[0], input_shape[-1]))
+        def call(self, inputs, training=False):
+            attn_out = self.mha(inputs, inputs, training=training)
+            return self.norm(inputs + attn_out)
 
         def get_config(self):
             config = super().get_config()
-            config.update({"units": self.units})
+            config.update({"num_heads": self.num_heads, "key_dim": self.key_dim})
             return config
 
 
-def focal_loss_fn(y_true, y_pred, gamma: float = 2.0, alpha: float = 0.25):
+def focal_loss_fn(y_true, y_pred, gamma: float = 2.0, alpha: float = 0.65):
     if tf is None:
         raise RuntimeError("TensorFlow is required for focal_loss_fn")
 
@@ -86,16 +90,11 @@ class FallPredictor:
         self.scaler_path = Path(os.getenv("ML_SCALER_PATH", DEFAULT_SCALER_PATH))
         self.config = self._load_config()
 
-        configured_threshold = _safe_float(self.config.get("threshold"), 0.5)
-
-        if threshold is not None:
-            self.threshold = _clip01(_safe_float(threshold, configured_threshold))
-        else:
-            self.threshold = _clip01(configured_threshold)
+        self.threshold, self.threshold_source = self._resolve_threshold(threshold)
 
         self.window_size = int(self.config.get("window_size", 100) or 100)
         self.num_channels = int(self.config.get("num_channels", 6) or 6)
-        self.model_version = self.model_path.stem
+        self.model_version = str(self.config.get("version") or self.model_path.stem)
         self.backend = "tensorflow"
         self.scaler = self._load_scaler()
         self.model = self._load_model()
@@ -111,6 +110,19 @@ class FallPredictor:
             raise ValueError(f"Config must be a JSON object: {self.config_path}")
 
         return loaded
+
+    def _resolve_threshold(self, threshold: float | None) -> tuple[float, str]:
+        if threshold is not None:
+            return _clip01(_safe_float(threshold, 0.5)), "constructor_argument"
+
+        env_threshold = os.getenv("ML_FALL_THRESHOLD")
+        if env_threshold is not None and env_threshold.strip() != "":
+            return _clip01(_safe_float(env_threshold, 0.5)), "env:ML_FALL_THRESHOLD"
+
+        if "deployment_threshold" in self.config:
+            return _clip01(_safe_float(self.config.get("deployment_threshold"), 0.5)), "config:deployment_threshold"
+
+        return _clip01(_safe_float(self.config.get("threshold"), 0.5)), "config:threshold"
 
     def _load_scaler(self):
         if not self.scaler_path.exists():
@@ -133,20 +145,11 @@ class FallPredictor:
 
         model = tf.keras.models.load_model(
             self.model_path,
-            custom_objects={"SelfAttention": SelfAttention},
+            custom_objects={
+                "MultiHeadSelfAttention": MultiHeadSelfAttention,
+                "focal_loss_fn": focal_loss_fn,
+            },
             compile=False,
-        )
-
-        model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=DEFAULT_LEARNING_RATE),
-            loss=focal_loss_fn,
-            metrics=[
-                "accuracy",
-                tf.keras.metrics.Precision(name="precision"),
-                tf.keras.metrics.Recall(name="recall"),
-                tf.keras.metrics.AUC(name="auc"),
-                tf.keras.metrics.AUC(name="auc_pr", curve="PR"),
-            ],
         )
         return model
 
@@ -174,9 +177,12 @@ class FallPredictor:
             "model_version": self.model_version,
             "backend": self.backend,
             "threshold": self.threshold,
+            "threshold_source": self.threshold_source,
             "error": None,
             "config_path": str(self.config_path),
             "scaler_path": str(self.scaler_path),
+            "config_version": self.config.get("version"),
+            "architecture": self.config.get("architecture"),
             "window_size": self.window_size,
             "num_channels": self.num_channels,
             "scaler_loaded": True,

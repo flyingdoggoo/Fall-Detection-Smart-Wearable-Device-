@@ -1,18 +1,27 @@
 {
-  "connected": false,
-  "last_seen": null,
-  "last_batch_size": 0,
-  "last_bpm": null,
-  "last_fsm_state": null,
-  "last_features": null,
-  "last_prediction": {
-    "available": true,
-    "fall_detected": true,
-    "confidence": 0.98,
-    "backend": "web_dashboard",
-    "model_version": "manual_simulation",
-    "threshold": 0.8
+  "connected": true,
+  "last_seen": "2026-04-13T16:24:35.673Z",
+  "last_batch_size": 100,
+  "last_bpm": 80,
+  "last_fsm_state": 2,
+  "last_features": {
+    "magnitude_avg": 10.617130279541016,
+    "sma": 5.852554798126221,
+    "max_accel": 10.927511215209961,
+    "max_gyro": 1.1440848112106323,
+    "std_accel": 0.25572776794433594,
+    "jerk_peak": 2.9822826385498047
   },
-  "last_fall_at": "2026-04-13T05:21:24.047Z",
-  "updated_at": null
+  "last_prediction": {
+    "fall_detected": true,
+    "confidence": 0.6304,
+    "model_version": "final_rf_model",
+    "backend": "random_forest",
+    "threshold": 0.5,
+    "model_loaded": true,
+    "warnings": [],
+    "available": true
+  },
+  "last_fall_at": "2026-04-13T16:24:15.711Z",
+  "updated_at": "2026-04-13T16:24:35.673Z"
 }

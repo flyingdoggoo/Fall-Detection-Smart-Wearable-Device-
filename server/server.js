@@ -44,7 +44,14 @@ const PORT = Number(process.env.PORT || 3000);
 const COAP_PORT = Number(process.env.COAP_PORT || 5683);
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://127.0.0.1:5000/predict";
 const ML_TIMEOUT_MS = Number(process.env.ML_TIMEOUT_MS || 4000);
-const FALL_CONFIDENCE_THRESHOLD = Number(process.env.FALL_CONFIDENCE_THRESHOLD || 0.8);
+const FALL_CONFIDENCE_THRESHOLD_OVERRIDE_RAW = process.env.FALL_CONFIDENCE_THRESHOLD;
+const FALL_CONFIDENCE_THRESHOLD_OVERRIDE = (
+    typeof FALL_CONFIDENCE_THRESHOLD_OVERRIDE_RAW === "string"
+    && FALL_CONFIDENCE_THRESHOLD_OVERRIDE_RAW.trim() !== ""
+    && Number.isFinite(Number(FALL_CONFIDENCE_THRESHOLD_OVERRIDE_RAW))
+)
+    ? Math.max(0, Math.min(1, Number(FALL_CONFIDENCE_THRESHOLD_OVERRIDE_RAW)))
+    : null;
 const FALL_NOTIFICATION_COOLDOWN_MS = Number(process.env.FALL_NOTIFICATION_COOLDOWN_MS || 30000);
 const ALERT_REPEAT_INTERVAL_MS = Number(process.env.ALERT_REPEAT_INTERVAL_MS || 15000);
 const DEVICE_ONLINE_WINDOW_MS = Number(process.env.DEVICE_ONLINE_WINDOW_MS || 15000);
@@ -392,13 +399,14 @@ app.post("/api/simulate-fall", async (req, res) => {
         }
         : null;
 
+    const simulationThreshold = resolveFallThreshold(null);
     const fallEvent = {
         id: crypto.randomUUID(),
         event_id: null,
         timestamp: new Date(now).toISOString(),
         session_id: currentSessionId,
         confidence,
-        threshold: FALL_CONFIDENCE_THRESHOLD,
+        threshold: simulationThreshold,
         status: "pending",
         source,
         model_version: "manual_simulation",
@@ -446,7 +454,7 @@ app.post("/api/simulate-fall", async (req, res) => {
         confidence,
         backend: source,
         model_version: "manual_simulation",
-        threshold: FALL_CONFIDENCE_THRESHOLD,
+        threshold: simulationThreshold,
     };
     writeJsonFile(DEVICE_STATUS_FILE, deviceStatus);
 
@@ -772,7 +780,8 @@ app.get("/api/status", (req, res) => {
         session_id: currentSessionId,
         timestamp: new Date().toISOString(),
         ml_service_url: ML_SERVICE_URL,
-        fall_confidence_threshold: FALL_CONFIDENCE_THRESHOLD,
+        fall_confidence_threshold_override: FALL_CONFIDENCE_THRESHOLD_OVERRIDE,
+        fall_confidence_threshold_source: FALL_CONFIDENCE_THRESHOLD_OVERRIDE === null ? "ml_response" : "env_override",
         firebase: {
             configured: firebaseState.configured,
             messaging_enabled: Boolean(firebaseState.messaging),
@@ -953,6 +962,19 @@ function getComputedDeviceStatus() {
 
 // --- ML and fall-detection helpers ----------------------------------------------
 
+function resolveFallThreshold(mlResult) {
+    if (FALL_CONFIDENCE_THRESHOLD_OVERRIDE !== null) {
+        return FALL_CONFIDENCE_THRESHOLD_OVERRIDE;
+    }
+
+    const mlThreshold = safeNullableNumber(mlResult?.threshold);
+    if (mlThreshold !== null) {
+        return Math.max(0, Math.min(1, mlThreshold));
+    }
+
+    return 0.5;
+}
+
 // Send one batch to the Python ML service and normalize its response.
 async function predictFall(batchData) {
     const payload = {
@@ -970,7 +992,7 @@ async function predictFall(batchData) {
             confidence: safeNumber(response.confidence),
             model_version: response.model_version || "unknown",
             backend: response.backend || "unknown",
-            threshold: safeNumber(response.threshold),
+            threshold: safeNullableNumber(response.threshold),
             model_loaded: Boolean(response.model_loaded),
             warnings: Array.isArray(response.warnings) ? response.warnings : [],
             available: true,
@@ -982,7 +1004,7 @@ async function predictFall(batchData) {
             confidence: 0,
             model_version: "unavailable",
             backend: "unavailable",
-            threshold: FALL_CONFIDENCE_THRESHOLD,
+            threshold: resolveFallThreshold(null),
             model_loaded: false,
             warnings: [error.message],
             available: false,
@@ -992,7 +1014,8 @@ async function predictFall(batchData) {
 
 // Decide whether an ML prediction should become a real fall event.
 async function maybeHandleFallDetection(batchData, mlResult, esp32FallDetected) {
-    const qualifies = Boolean(mlResult.fall_detected) && safeNumber(mlResult.confidence) >= FALL_CONFIDENCE_THRESHOLD;
+    const decisionThreshold = resolveFallThreshold(mlResult);
+    const qualifies = Boolean(mlResult.fall_detected) && safeNumber(mlResult.confidence) >= decisionThreshold;
     if (!qualifies) {
         return null;
     }
@@ -1012,7 +1035,7 @@ async function maybeHandleFallDetection(batchData, mlResult, esp32FallDetected) 
         timestamp: new Date(now).toISOString(),
         session_id: currentSessionId,
         confidence: safeNumber(mlResult.confidence),
-        threshold: FALL_CONFIDENCE_THRESHOLD,
+        threshold: decisionThreshold,
         status: "pending",
         source: mlResult.backend || "ml_service",
         model_version: mlResult.model_version || null,

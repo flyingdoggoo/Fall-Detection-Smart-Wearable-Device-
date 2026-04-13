@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "start:deploy": "node server_deploy.js",
+    "dev:deploy": "node server_deploy.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
