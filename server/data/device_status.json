@@ -1,0 +1,18 @@
+{
+  "connected": false,
+  "last_seen": null,
+  "last_batch_size": 0,
+  "last_bpm": null,
+  "last_fsm_state": null,
+  "last_features": null,
+  "last_prediction": {
+    "available": true,
+    "fall_detected": true,
+    "confidence": 0.98,
+    "backend": "web_dashboard",
+    "model_version": "manual_simulation",
+    "threshold": 0.8
+  },
+  "last_fall_at": "2026-04-13T05:21:24.047Z",
+  "updated_at": null
+}

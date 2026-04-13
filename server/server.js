@@ -46,9 +46,13 @@ const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://127.0.0.1:5000/pred
 const ML_TIMEOUT_MS = Number(process.env.ML_TIMEOUT_MS || 4000);
 const FALL_CONFIDENCE_THRESHOLD = Number(process.env.FALL_CONFIDENCE_THRESHOLD || 0.8);
 const FALL_NOTIFICATION_COOLDOWN_MS = Number(process.env.FALL_NOTIFICATION_COOLDOWN_MS || 30000);
+const ALERT_REPEAT_INTERVAL_MS = Number(process.env.ALERT_REPEAT_INTERVAL_MS || 15000);
 const DEVICE_ONLINE_WINDOW_MS = Number(process.env.DEVICE_ONLINE_WINDOW_MS || 15000);
-const MAX_FALL_HISTORY = Number(process.env.MAX_FALL_HISTORY || 50);
+const MAX_FALL_HISTORY = Number(process.env.MAX_FALL_HISTORY || 20);
+const MAX_COMMUNICATION_HISTORY = Number(process.env.MAX_COMMUNICATION_HISTORY || 50);
 const ML_WINDOW_SAMPLES = Number(process.env.ML_WINDOW_SAMPLES || 100);
+const CALL_PROVIDER = process.env.CALL_PROVIDER || "mock";
+const SMS_PROVIDER = process.env.SMS_PROVIDER || "mock";
 const COAP_TYPE = { CON: 0, NON: 1, ACK: 2 };
 const COAP_CODE = {
     POST: 2,
@@ -62,6 +66,8 @@ const COAP_CODE = {
 const SENSOR_PACKET_VERSION = 2;
 const LEGACY_SENSOR_PACKET_VERSION = 1;
 const SENSOR_SAMPLE_BYTES = 28;
+const ownerPendingRepeaters = new Map();
+const relativeAlertedRepeaters = new Map();
 
 const DATA_ROOT = path.join(__dirname, "data");
 const COLLECTED_DIR = path.join(DATA_ROOT, "collected");
@@ -70,6 +76,7 @@ const FALL_DIR = path.join(COLLECTED_DIR, "Fall");
 const TOKENS_FILE = path.join(DATA_ROOT, "fcm_tokens.json");
 const FALL_HISTORY_FILE = path.join(DATA_ROOT, "fall_history.json");
 const DEVICE_STATUS_FILE = path.join(DATA_ROOT, "device_status.json");
+const COMMUNICATION_LOG_FILE = path.join(DATA_ROOT, "communication_log.json");
 const FIREBASE_SERVICE_ACCOUNT_FILE = path.join(__dirname, "firebase-service-account.json");
 
 const deviceStatus = {
@@ -91,6 +98,7 @@ ensureDirectory(FALL_DIR);
 ensureJsonFile(TOKENS_FILE, []);
 ensureJsonFile(FALL_HISTORY_FILE, []);
 ensureJsonFile(DEVICE_STATUS_FILE, deviceStatus);
+ensureJsonFile(COMMUNICATION_LOG_FILE, []);
 
 const firebaseState = initializeFirebase();
 
@@ -364,6 +372,100 @@ app.post("/api/mark-fall", (req, res) => {
     });
 });
 
+// Simulate a fall event for app/web testing without sensor input.
+app.post("/api/simulate-fall", async (req, res) => {
+    if (!currentSessionId) {
+        startNewSession("1");
+    }
+
+    const now = Date.now();
+    const marker = recordFallMarker("manual_simulation");
+    const confidence = Math.max(0, Math.min(1, safeNumber(req.body?.confidence, 0.97)));
+    const fsmState = req.body?.fsm_state || "FSM_FALL_CONFIRMED";
+    const source = req.body?.source || "manual_simulation";
+    const shouldNotify = req.body?.notify !== false;
+    const location = req.body?.location && typeof req.body.location === "object"
+        ? {
+            lat: safeNullableNumber(req.body.location.lat),
+            lng: safeNullableNumber(req.body.location.lng),
+            text: typeof req.body.location.text === "string" ? req.body.location.text : null,
+        }
+        : null;
+
+    const fallEvent = {
+        id: crypto.randomUUID(),
+        event_id: null,
+        timestamp: new Date(now).toISOString(),
+        session_id: currentSessionId,
+        confidence,
+        threshold: FALL_CONFIDENCE_THRESHOLD,
+        status: "pending",
+        source,
+        model_version: "manual_simulation",
+        esp32_fall_detected: true,
+        features: {
+            magnitude_avg: 9.81,
+            sma: 3.2,
+            max_accel: 31.4,
+            max_gyro: 2.1,
+            std_accel: 0.7,
+            jerk_peak: 150.2,
+        },
+        fsm_state: fsmState,
+        bpm: safeNullableNumber(req.body?.bpm) ?? 78,
+        elapsed_seconds: marker.elapsed_seconds,
+        location,
+        notification: {
+            requested_at: new Date(now).toISOString(),
+            simulated: true,
+        },
+    };
+    fallEvent.event_id = fallEvent.id;
+
+    let notificationResult = {
+        sent: false,
+        reason: "notification disabled for simulation",
+        token_count: 0,
+    };
+    if (shouldNotify) {
+        notificationResult = await sendFallNotifications(fallEvent, {
+            targetRoles: ["owner"],
+            stage: "pending",
+        });
+    }
+
+    fallEvent.notification = {
+        ...fallEvent.notification,
+        ...notificationResult,
+    };
+
+    deviceStatus.last_fall_at = fallEvent.timestamp;
+    deviceStatus.last_prediction = {
+        available: true,
+        fall_detected: true,
+        confidence,
+        backend: source,
+        model_version: "manual_simulation",
+        threshold: FALL_CONFIDENCE_THRESHOLD,
+    };
+    writeJsonFile(DEVICE_STATUS_FILE, deviceStatus);
+
+    appendFallHistory(fallEvent);
+    if (shouldNotify) {
+        startOwnerPendingRepeater(fallEvent.id);
+    }
+    io.emit("fallDetected", fallEvent);
+
+    lastTriggeredFallAt = now;
+
+    return res.json({
+        success: true,
+        simulated: true,
+        event: fallEvent,
+        notification: notificationResult,
+    });
+});
+
 // Return how many fall and normal sessions have been collected.
 app.get("/api/sessions/stats", (req, res) => {
     const countDirs = (dir) => {
@@ -438,35 +540,227 @@ app.get("/api/device/status", (req, res) => {
 });
 
 // Update how a user responded to a fall alert.
-app.post("/api/fall-response", (req, res) => {
-    const action = normalizeFallAction(req.body?.action);
-    if (!action) {
+app.post('/api/fall-response', async (req, res) => {
+  const action = normalizeFallAction(req.body?.action);
+  if (!action) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid action. Use "confirm", "acknowledge", or "acknowledged"',
+    });
+  }
+
+  const fallHistory = readJsonFile(FALL_HISTORY_FILE, []);
+  const targetId = req.body?.event_id || req.body?.fall_id || getLatestPendingFallId(fallHistory);
+  if (!targetId) {
+    return res.status(404).json({ success: false, error: 'No fall event available to update' });
+  }
+
+  const event = fallHistory.find((entry) => entry.id === targetId);
+  if (!event) {
+    return res.status(404).json({ success: false, error: `Fall event not found: ${targetId}` });
+  }
+
+  event.status = action;
+  event.responded_at = new Date().toISOString();
+  event.response_note = req.body?.note || null;
+  event.response_source = req.body?.source || 'mobile_app';
+
+  if (action === 'alerted') {
+    stopOwnerPendingRepeater(event.id);
+    event.confirmed_at = new Date().toISOString();
+    event.alerted_at = new Date().toISOString();
+
+    writeJsonFile(FALL_HISTORY_FILE, fallHistory);
+
+    const relativePush = await sendFallNotifications(event, {
+      targetRoles: ['relative'],
+      stage: 'alerted',
+    });
+    event.notification = {
+      ...(event.notification || {}),
+      relative_alerted: relativePush,
+    };
+
+    writeJsonFile(FALL_HISTORY_FILE, fallHistory);
+    startRelativeAlertedRepeater(event.id);
+  }
+
+  if (action === 'acknowledged') {
+    stopOwnerPendingRepeater(event.id);
+    stopRelativeAlertedRepeater(event.id);
+    writeJsonFile(FALL_HISTORY_FILE, fallHistory);
+  }
+
+  io.emit('fallResponseUpdated', event);
+  return res.json({ success: true, event });
+});
+
+// Trigger a communication call workflow (local mock by default).
+app.post("/api/comm/call", async (req, res) => {
+    const contacts = sanitizeContacts(req.body?.contacts || req.body?.call_contacts);
+    if (contacts.length === 0) {
+        return res.status(400).json({ success: false, error: "Missing valid contacts" });
+    }
+
+    const eventId = req.body?.event_id || req.body?.fall_id || null;
+    const location = req.body?.location || null;
+    const reason = req.body?.reason || "manual_trigger";
+    const message = typeof req.body?.message === "string" && req.body.message.trim().length > 0
+        ? req.body.message.trim()
+        : buildDefaultEscalationMessage({ eventId, reason, location });
+
+    const result = await dispatchCallAction({
+        eventId,
+        contacts,
+        reason,
+        source: req.body?.source || "mobile_app",
+        message,
+        metadata: {
+            location,
+        },
+    });
+
+    return res.json({ success: true, call: result });
+});
+
+// Trigger a communication SMS workflow (local mock by default).
+app.post("/api/comm/sms", async (req, res) => {
+    const contacts = sanitizeContacts(req.body?.contacts || req.body?.sms_contacts);
+    if (contacts.length === 0) {
+        return res.status(400).json({ success: false, error: "Missing valid contacts" });
+    }
+
+    const eventId = req.body?.event_id || req.body?.fall_id || null;
+    const location = req.body?.location || null;
+    const reason = req.body?.reason || "manual_trigger";
+    const message = typeof req.body?.message === "string" && req.body.message.trim().length > 0
+        ? req.body.message.trim()
+        : buildDefaultEscalationMessage({ eventId, reason, location });
+
+    const result = await dispatchSmsAction({
+        eventId,
+        contacts,
+        reason,
+        source: req.body?.source || "mobile_app",
+        message,
+        metadata: { location },
+    });
+
+    return res.json({ success: true, sms: result });
+});
+
+// Escalate a fall event to family call + SMS when owner does not respond.
+app.post("/api/fall-escalation", async (req, res) => {
+    const fallHistory = readJsonFile(FALL_HISTORY_FILE, []);
+    const eventId = req.body?.event_id || req.body?.fall_id || getLatestPendingFallId(fallHistory);
+    if (!eventId) {
+        return res.status(404).json({ success: false, error: "No fall event available to escalate" });
+    }
+
+    const event = fallHistory.find((entry) => entry.id === eventId);
+    if (!event) {
+        return res.status(404).json({ success: false, error: `Fall event not found: ${eventId}` });
+    }
+
+    const callContacts = sanitizeContacts(req.body?.call_contacts);
+    const smsContacts = sanitizeContacts(req.body?.sms_contacts);
+    if (callContacts.length === 0 && smsContacts.length === 0) {
         return res.status(400).json({
             success: false,
-            error: 'Invalid action. Use "dismiss", "confirm", "confirmed", or "escalated"',
+            error: "Missing call_contacts or sms_contacts",
         });
     }
 
-    const fallHistory = readJsonFile(FALL_HISTORY_FILE, []);
-    const targetId = req.body?.event_id || req.body?.fall_id || getLatestPendingFallId(fallHistory);
-    if (!targetId) {
-        return res.status(404).json({ success: false, error: "No fall event available to update" });
-    }
+    const location = req.body?.location || null;
+    const reason = req.body?.reason || "owner_timeout";
+    const source = req.body?.source || "mobile_app";
 
-    const event = fallHistory.find((entry) => entry.id === targetId);
-    if (!event) {
-        return res.status(404).json({ success: false, error: `Fall event not found: ${targetId}` });
-    }
+    const smsMessage = buildDefaultEscalationMessage({ eventId, reason, location });
+    const callResult = callContacts.length > 0
+        ? await dispatchCallAction({
+            eventId,
+            contacts: callContacts,
+            reason,
+            source,
+            message: smsMessage,
+            metadata: { location },
+        })
+        : { success: false, attempted: 0, provider: CALL_PROVIDER, skipped: true, reason: "no_call_contacts" };
 
-    event.status = action;
+    const smsResult = smsContacts.length > 0
+        ? await dispatchSmsAction({
+            eventId,
+            contacts: smsContacts,
+            reason,
+            source,
+            message: smsMessage,
+            metadata: { location },
+        })
+        : { success: false, attempted: 0, provider: SMS_PROVIDER, skipped: true, reason: "no_sms_contacts" };
+
+    if (event.status === "pending") {
+        event.confirmed_at = new Date().toISOString();
+    }
+    event.status = "alerted";
+    event.alerted_at = new Date().toISOString();
     event.responded_at = new Date().toISOString();
+    event.response_source = source;
     event.response_note = req.body?.note || null;
-    event.response_source = req.body?.source || "mobile_app";
+    event.escalation = {
+        reason,
+        location,
+        call: {
+            provider: callResult.provider,
+            attempted: callResult.attempted,
+            success: callResult.success,
+        },
+        sms: {
+            provider: smsResult.provider,
+            attempted: smsResult.attempted,
+            success: smsResult.success,
+        },
+        updated_at: new Date().toISOString(),
+    };
 
     writeJsonFile(FALL_HISTORY_FILE, fallHistory);
-    io.emit("fallResponseUpdated", event);
 
-    return res.json({ success: true, event });
+    stopOwnerPendingRepeater(event.id);
+    const relativePush = await sendFallNotifications(event, {
+        targetRoles: ["relative"],
+        stage: "alerted",
+    });
+    event.notification = {
+        ...(event.notification || {}),
+        relative_alerted: relativePush,
+    };
+    writeJsonFile(FALL_HISTORY_FILE, fallHistory);
+    startRelativeAlertedRepeater(event.id);
+    io.emit("fallResponseUpdated", event);
+    io.emit("fallEscalated", {
+        event_id: eventId,
+        reason,
+        call: callResult,
+        sms: smsResult,
+    });
+
+    return res.json({
+        success: true,
+        event_id: eventId,
+        escalation: {
+            reason,
+            call: {
+                provider: callResult.provider,
+                success: callResult.success,
+                attempted: callResult.attempted,
+            },
+            sms: {
+                provider: smsResult.provider,
+                success: smsResult.success,
+                attempted: smsResult.attempted,
+            },
+        },
+        event,
+    });
 });
 
 // Return a compact health snapshot for the full server stack.
@@ -484,6 +778,13 @@ app.get("/api/status", (req, res) => {
             messaging_enabled: Boolean(firebaseState.messaging),
             error: firebaseState.error,
         },
+        communication: {
+            call_provider: CALL_PROVIDER,
+            sms_provider: SMS_PROVIDER,
+            mock_mode: CALL_PROVIDER === "mock" && SMS_PROVIDER === "mock",
+            max_history: MAX_COMMUNICATION_HISTORY,
+        },
+        max_fall_history: MAX_FALL_HISTORY,
         device_status: getComputedDeviceStatus(),
     });
 });
@@ -724,21 +1025,35 @@ async function maybeHandleFallDetection(batchData, mlResult, esp32FallDetected) 
         },
     };
 
-    const notificationResult = await sendFallNotifications(fallEvent);
+    const notificationResult = await sendFallNotifications(fallEvent, {
+        targetRoles: ["owner"],
+        stage: "pending",
+    });
     fallEvent.notification = {
         ...fallEvent.notification,
         ...notificationResult,
     };
 
     appendFallHistory(fallEvent);
+    startOwnerPendingRepeater(fallEvent.id);
     io.emit("fallDetected", fallEvent);
     return fallEvent;
 }
 
-// Send push notifications to all registered mobile devices.
-async function sendFallNotifications(fallEvent) {
+// Send push notifications to selected audience roles for a specific stage.
+async function sendFallNotifications(fallEvent, options = {}) {
     const tokens = readJsonFile(TOKENS_FILE, []);
-    const tokenValues = tokens.map((entry) => entry.token).filter(Boolean);
+    const targetRoles = Array.isArray(options.targetRoles) && options.targetRoles.length > 0
+        ? options.targetRoles.map((role) => String(role).toLowerCase())
+        : ["owner", "relative"];
+    const stage = String(options.stage || fallEvent.status || "pending").toLowerCase();
+    const audience = tokens.filter((entry) => targetRoles.includes(String(entry.role || "").toLowerCase()));
+    const tokenValues = audience.map((entry) => entry.token).filter(Boolean);
+
+    const title = stage === "alerted" ? "Emergency alert active" : "Fall detected";
+    const body = stage === "alerted"
+        ? "Owner confirmed emergency. Please acknowledge immediately."
+        : `Potential fall detected. Confidence ${Math.round(fallEvent.confidence * 100)}%.`;
 
     if (!firebaseState.messaging) {
         return {
@@ -759,14 +1074,15 @@ async function sendFallNotifications(fallEvent) {
     const message = {
         tokens: tokenValues,
         notification: {
-            title: "Fall detected",
-            body: `Potential fall detected. Confidence ${Math.round(fallEvent.confidence * 100)}%.`,
+            title,
+            body,
         },
         data: {
             eventId: String(fallEvent.id),
             confidence: String(fallEvent.confidence),
             timestamp: String(fallEvent.timestamp),
             status: String(fallEvent.status),
+            stage,
         },
         android: {
             priority: "high",
@@ -807,6 +1123,8 @@ async function sendFallNotifications(fallEvent) {
             success_count: result.successCount,
             failure_count: result.failureCount,
             token_count: tokenValues.length,
+            target_roles: targetRoles,
+            stage,
             removed_invalid_tokens: invalidTokens.length,
         };
     } catch (error) {
@@ -814,6 +1132,8 @@ async function sendFallNotifications(fallEvent) {
             sent: false,
             reason: error.message,
             token_count: tokenValues.length,
+            target_roles: targetRoles,
+            stage,
         };
     }
 }
@@ -827,27 +1147,229 @@ function appendFallHistory(fallEvent) {
 
 // Normalize allowed fall-response actions to stored status values.
 function normalizeFallAction(action) {
-    if (typeof action !== "string") {
-        return null;
-    }
-
-    const normalized = action.trim().toLowerCase();
-    if (normalized === "dismiss") {
-        return "dismissed";
-    }
-    if (normalized === "confirm" || normalized === "confirmed") {
-        return "confirmed";
-    }
-    if (normalized === "escalated") {
-        return "escalated";
-    }
-    return null;
+  if (typeof action !== 'string') return null;
+  const normalized = action.trim().toLowerCase();
+  if (normalized === 'confirm' || normalized === 'confirmed') return 'alerted';
+  if (normalized === 'acknowledge' || normalized === 'acknowledged' || normalized === 'dismiss') return 'acknowledged';
+  return null;
 }
 
 // Pick the newest unresolved fall event when no explicit id is provided.
 function getLatestPendingFallId(history) {
     const latestPending = history.find((entry) => entry.status === "pending");
     return latestPending ? latestPending.id : null;
+}
+
+function startOwnerPendingRepeater(eventId) {
+    if (!eventId || ownerPendingRepeaters.has(eventId)) {
+        return;
+    }
+
+    const timer = setInterval(async () => {
+        const event = getFallEventById(eventId);
+        if (!event || event.status !== "pending") {
+            stopOwnerPendingRepeater(eventId);
+            return;
+        }
+
+        const pushResult = await sendFallNotifications(event, {
+            targetRoles: ["owner"],
+            stage: "pending",
+        });
+
+        appendCommunicationLog({
+            type: "push",
+            event_id: eventId,
+            stage: "pending_repeat",
+            target_roles: ["owner"],
+            result: pushResult,
+            requested_at: new Date().toISOString(),
+        });
+    }, ALERT_REPEAT_INTERVAL_MS);
+
+    ownerPendingRepeaters.set(eventId, timer);
+}
+
+function stopOwnerPendingRepeater(eventId) {
+    const timer = ownerPendingRepeaters.get(eventId);
+    if (!timer) {
+        return;
+    }
+    clearInterval(timer);
+    ownerPendingRepeaters.delete(eventId);
+}
+
+function startRelativeAlertedRepeater(eventId) {
+    if (!eventId || relativeAlertedRepeaters.has(eventId)) {
+        return;
+    }
+
+    const timer = setInterval(async () => {
+        const event = getFallEventById(eventId);
+        if (!event || event.status !== "alerted") {
+            stopRelativeAlertedRepeater(eventId);
+            return;
+        }
+
+        const pushResult = await sendFallNotifications(event, {
+            targetRoles: ["relative"],
+            stage: "alerted",
+        });
+
+        appendCommunicationLog({
+            type: "push",
+            event_id: eventId,
+            stage: "alerted_repeat",
+            target_roles: ["relative"],
+            result: pushResult,
+            requested_at: new Date().toISOString(),
+        });
+    }, ALERT_REPEAT_INTERVAL_MS);
+
+    relativeAlertedRepeaters.set(eventId, timer);
+}
+
+function stopRelativeAlertedRepeater(eventId) {
+    const timer = relativeAlertedRepeaters.get(eventId);
+    if (!timer) {
+        return;
+    }
+    clearInterval(timer);
+    relativeAlertedRepeaters.delete(eventId);
+}
+
+function getFallEventById(eventId) {
+    if (!eventId) {
+        return null;
+    }
+    const fallHistory = readJsonFile(FALL_HISTORY_FILE, []);
+    return fallHistory.find((entry) => entry.id === eventId) || null;
+}
+
+// Keep only valid contact entries to avoid dispatch failures.
+function sanitizeContacts(contacts, maxContacts = 20) {
+    if (!Array.isArray(contacts)) {
+        return [];
+    }
+
+    const seen = new Set();
+    const output = [];
+
+    contacts.forEach((entry) => {
+        if (!entry || typeof entry !== "object") {
+            return;
+        }
+
+        const rawPhone = typeof entry.phone === "string" ? entry.phone : "";
+        const normalizedPhone = rawPhone.replace(/\s+/g, " ").trim();
+        const compactPhone = normalizedPhone.replace(/[^0-9+]/g, "");
+        if (compactPhone.length < 8) {
+            return;
+        }
+
+        const uniqueKey = compactPhone;
+        if (seen.has(uniqueKey)) {
+            return;
+        }
+        seen.add(uniqueKey);
+
+        output.push({
+            name: typeof entry.name === "string" && entry.name.trim().length > 0 ? entry.name.trim() : "Contact",
+            phone: compactPhone,
+        });
+    });
+
+    return output.slice(0, maxContacts);
+}
+
+function buildDefaultEscalationMessage({ eventId, reason, location }) {
+    const locationText = formatLocationForMessage(location);
+    return `Emergency fall alert (${reason}). Event ${eventId || "unknown"}. ${locationText}`;
+}
+
+function formatLocationForMessage(location) {
+    if (!location || typeof location !== "object") {
+        return "Location unavailable.";
+    }
+
+    if (typeof location.text === "string" && location.text.trim().length > 0) {
+        return `Location: ${location.text.trim()}.`;
+    }
+
+    const lat = safeNullableNumber(location.lat);
+    const lng = safeNullableNumber(location.lng);
+    if (lat === null || lng === null) {
+        return "Location unavailable.";
+    }
+
+    return `Location: ${lat.toFixed(6)}, ${lng.toFixed(6)}.`;
+}
+
+function dispatchCallAction({ eventId, contacts, reason, source, metadata }) {
+    const now = new Date().toISOString();
+    const attempts = contacts.map((contact, index) => ({
+        order: index + 1,
+        name: contact.name,
+        phone: contact.phone,
+        status: CALL_PROVIDER === "mock" ? "mock_dispatched" : "queued",
+        requested_at: now,
+    }));
+
+    const result = {
+        provider: CALL_PROVIDER,
+        success: attempts.some((attempt) => attempt.status === "dispatched" || attempt.status === "mock_dispatched"),
+        attempted: attempts.length,
+        attempts,
+        reason,
+        source,
+        event_id: eventId || null,
+        requested_at: now,
+    };
+
+    appendCommunicationLog({
+        type: "call",
+        ...result,
+        metadata: metadata || null,
+    });
+    io.emit("communicationDispatch", { type: "call", event_id: eventId || null, result });
+    return result;
+}
+
+function dispatchSmsAction({ eventId, contacts, reason, source, message, metadata }) {
+    const now = new Date().toISOString();
+    const attempts = contacts.map((contact, index) => ({
+        order: index + 1,
+        name: contact.name,
+        phone: contact.phone,
+        status: SMS_PROVIDER === "mock" ? "mock_dispatched" : "queued",
+        requested_at: now,
+    }));
+
+    const result = {
+        provider: SMS_PROVIDER,
+        success: attempts.some((attempt) => attempt.status === "dispatched" || attempt.status === "mock_dispatched"),
+        attempted: attempts.length,
+        attempts,
+        message,
+        reason,
+        source,
+        event_id: eventId || null,
+        requested_at: now,
+    };
+
+    appendCommunicationLog({
+        type: "sms",
+        ...result,
+        metadata: metadata || null,
+    });
+    io.emit("communicationDispatch", { type: "sms", event_id: eventId || null, result });
+    return result;
+}
+
+function appendCommunicationLog(entry) {
+    const history = readJsonFile(COMMUNICATION_LOG_FILE, []);
+    history.unshift(entry);
+    writeJsonFile(COMMUNICATION_LOG_FILE, history.slice(0, MAX_COMMUNICATION_HISTORY));
 }
 
 // Initialize Firebase Admin if service-account credentials are available.
@@ -884,6 +1406,7 @@ function initializeFirebase() {
         return state;
     }
 }
+
 
 // Perform a JSON HTTP POST with timeout handling.
 function postJson(urlString, payload, timeoutMs) {
@@ -1353,6 +1876,8 @@ server.listen(PORT, "0.0.0.0", () => {
     console.log(`CoAP:    coap://${localIP}:${COAP_PORT}`);
     console.log(`ML:      ${ML_SERVICE_URL}`);
     console.log(`FCM:     ${firebaseState.messaging ? "enabled" : `disabled (${firebaseState.error})`}`);
+    console.log(`Call provider: ${CALL_PROVIDER}`);
+    console.log(`SMS provider:  ${SMS_PROVIDER}`);
     console.log("");
 });
 

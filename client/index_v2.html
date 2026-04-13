@@ -129,6 +129,14 @@
             background: #dc2626;
         }
 
+        .settings button.warning {
+            background: #f59e0b;
+        }
+
+        .settings button.warning:hover {
+            background: #d97706;
+        }
+
         .session-info {
             background: #f0f9ff;
             padding: 10px 15px;
@@ -160,6 +168,27 @@
             align-items: flex-start;
             margin-bottom: 12px;
             flex-wrap: wrap;
+        }
+
+        .alert-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .alert-action-btn {
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            background: rgba(255, 255, 255, 0.12);
+            color: white;
+            border-radius: 999px;
+            padding: 7px 12px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .alert-action-btn:hover {
+            background: rgba(255, 255, 255, 0.22);
         }
 
         .alert-banner h2 {
@@ -375,6 +404,11 @@
             color: #374151;
         }
 
+        .status-pill.dismissed {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
         .status-pill.escalated {
             background: #fee2e2;
             color: #991b1b;
@@ -450,10 +484,11 @@
         </div>
 
         <div class="settings">
-            <input type="text" id="serverUrl" value="http://192.168.1.4:3000" placeholder="http://IP:PORT">
+            <input type="text" id="serverUrl" value="" placeholder="http://IP:PORT">
             <button onclick="reconnect()">Kết nối lại</button>
             <button onclick="startSession()" class="success">▶Start Session</button>
             <button onclick="stopSession()" class="danger">⏹Stop Session</button>
+            <button onclick="simulateFall()" class="warning">⚠ Simulate Fall</button>
         </div>
 
         <section class="alert-banner" id="fallAlertBanner">
@@ -462,7 +497,10 @@
                     <h2 id="fallAlertTitle">No fall alerts yet</h2>
                     <p id="fallAlertMessage">The dashboard will show the latest detected fall here as soon as the server emits one.</p>
                 </div>
-                <div class="alert-chip" id="fallAlertConfidence">Waiting for event</div>
+                <div class="alert-actions">
+                    <div class="alert-chip" id="fallAlertConfidence">Waiting for event</div>
+                    <button class="alert-action-btn" onclick="dismissLatestFall()">Hide Alert</button>
+                </div>
             </div>
         </section>
 
@@ -569,6 +607,407 @@
         </div>
     </div>
     <script>
+        const SERVER_URL_STORAGE_KEY = 'fall_dashboard_server_url';
+        let socket = null;
+        let packetCount = 0;
+        let disconnectUiTimer = null;
+        let lastFallEvent = null;
+
+        function getDefaultServerUrl() {
+            const host = window.location.hostname;
+            if (!host || host === 'localhost' || host === '127.0.0.1') {
+                return 'http://localhost:3000';
+            }
+            return `http://${host}:3000`;
+        }
+
+        function initializeServerUrlInput() {
+            const input = document.getElementById('serverUrl');
+            if (!input) {
+                return;
+            }
+
+            const saved = localStorage.getItem(SERVER_URL_STORAGE_KEY);
+            const initial = (saved && saved.trim()) || getDefaultServerUrl();
+            input.value = initial;
+
+            input.addEventListener('change', () => {
+                const cleaned = (input.value || '').trim().replace(/\/$/, '');
+                if (cleaned) {
+                    localStorage.setItem(SERVER_URL_STORAGE_KEY, cleaned);
+                    input.value = cleaned;
+                }
+            });
+        }
+
+        function getServerBaseUrl() {
+            const input = document.getElementById('serverUrl');
+            const value = (input?.value || '').trim();
+            if (!value) {
+                return '';
+            }
+            const normalized = value.replace(/\/$/, '');
+            localStorage.setItem(SERVER_URL_STORAGE_KEY, normalized);
+            return normalized;
+        }
+
+        function setConnectionUi(connected, text) {
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            if (!indicator || !statusText) {
+                return;
+            }
+            indicator.classList.remove('connected', 'disconnected');
+            indicator.classList.add(connected ? 'connected' : 'disconnected');
+            statusText.textContent = text;
+        }
+
+        function appendLog(message) {
+            const container = document.getElementById('logEntries');
+            if (!container) {
+                return;
+            }
+
+            const row = document.createElement('div');
+            row.className = 'log-entry';
+            const now = new Date().toLocaleTimeString();
+            row.innerHTML = `<span class="timestamp">[${now}]</span> ${message}`;
+            container.prepend(row);
+        }
+
+        function showFallBanner(event) {
+            const banner = document.getElementById('fallAlertBanner');
+            const title = document.getElementById('fallAlertTitle');
+            const message = document.getElementById('fallAlertMessage');
+            const chip = document.getElementById('fallAlertConfidence');
+
+            if (!banner || !title || !message || !chip) {
+                return;
+            }
+
+            lastFallEvent = event || lastFallEvent;
+
+            const confidence = Number(event?.confidence || 0);
+            title.textContent = 'Fall alert detected';
+            message.textContent = `Event ${event?.id || 'N/A'} from ${event?.source || 'unknown'}`;
+            chip.textContent = `Confidence ${(confidence * 100).toFixed(1)}%`;
+            banner.classList.add('active');
+        }
+
+        function hideFallBanner(reasonText = 'Alert dismissed.') {
+            const banner = document.getElementById('fallAlertBanner');
+            const title = document.getElementById('fallAlertTitle');
+            const message = document.getElementById('fallAlertMessage');
+            const chip = document.getElementById('fallAlertConfidence');
+
+            if (!banner || !title || !message || !chip) {
+                return;
+            }
+
+            title.textContent = 'No active fall alert';
+            message.textContent = reasonText;
+            chip.textContent = 'Waiting for event';
+            banner.classList.remove('active');
+        }
+
+        function ensureBannerFromHistory(falls) {
+            if (!Array.isArray(falls) || falls.length === 0) {
+                return;
+            }
+
+            const latest = falls[0];
+            if (!latest || !latest.id) {
+                return;
+            }
+
+            if (!lastFallEvent || latest.id !== lastFallEvent.id) {
+                showFallBanner(latest);
+            }
+        }
+
+        function setText(id, value) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = value;
+            }
+        }
+
+        function renderFallHistory(falls) {
+            const list = document.getElementById('fallHistoryList');
+            if (!list) {
+                return;
+            }
+
+            if (!Array.isArray(falls) || falls.length === 0) {
+                list.innerHTML = '<div class="history-empty">No fall events yet.</div>';
+                return;
+            }
+
+            list.innerHTML = falls.slice(0, 8).map((fall) => {
+                const status = String(fall.status || 'unknown');
+                const confidence = Number(fall.confidence || 0);
+                return `
+                    <div class="history-item">
+                        <div class="history-item-header">
+                            <div class="history-item-title">${fall.id || 'unknown_event'}</div>
+                            <span class="status-pill ${status}">${status}</span>
+                        </div>
+                        <div class="history-meta">
+                            <div>Time: ${fall.timestamp || '--'}</div>
+                            <div>Confidence: ${(confidence * 100).toFixed(1)}%</div>
+                            <div>Source: ${fall.source || '--'}</div>
+                            <div>Session: ${fall.session_id || '--'}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const latest = falls[0];
+            const latestStatus = String(latest?.status || '').toLowerCase();
+            if (latestStatus === 'dismissed' || latestStatus === 'confirmed') {
+                hideFallBanner(`Latest alert is ${latestStatus}.`);
+            }
+        }
+
+        async function refreshStatus() {
+            const baseUrl = getServerBaseUrl();
+            if (!baseUrl) {
+                return;
+            }
+            try {
+                const res = await fetch(`${baseUrl}/api/status`);
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                const payload = await res.json();
+                setText('sessionId', payload.session_id || 'None');
+            } catch (error) {
+                appendLog(`Status refresh failed: ${error.message}`);
+            }
+        }
+
+        async function refreshDeviceStatus() {
+            const baseUrl = getServerBaseUrl();
+            if (!baseUrl) {
+                return;
+            }
+            try {
+                const res = await fetch(`${baseUrl}/api/device/status`);
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                const payload = await res.json();
+                const d = payload.device || {};
+                const connected = Boolean(d.connected);
+                const stateEl = document.getElementById('deviceConnectionState');
+                if (stateEl) {
+                    stateEl.classList.remove('online', 'offline');
+                    stateEl.classList.add(connected ? 'online' : 'offline');
+                    stateEl.textContent = connected ? 'Device Online' : 'Device Offline';
+                }
+
+                setText('deviceLastSeen', d.last_seen || '--');
+                setText('deviceLastBpm', d.last_bpm ?? '--');
+                setText('deviceFsmState', d.last_fsm_state ?? '--');
+                setText('deviceBatchSize', d.last_batch_size ?? '--');
+                setText('deviceLastFall', d.last_fall_at || '--');
+                setText('deviceMagnitude', d.last_features?.magnitude_avg ?? '--');
+                setText('devicePrediction', d.last_prediction?.fall_detected === true ? 'FALL' : 'NORMAL');
+            } catch (error) {
+                appendLog(`Device status refresh failed: ${error.message}`);
+            }
+        }
+
+        async function loadFallHistory() {
+            const baseUrl = getServerBaseUrl();
+            if (!baseUrl) {
+                return;
+            }
+            try {
+                const res = await fetch(`${baseUrl}/api/fall-history?limit=8`);
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                const payload = await res.json();
+                const falls = payload.falls || [];
+                renderFallHistory(falls);
+                ensureBannerFromHistory(falls);
+            } catch (error) {
+                appendLog(`Fall history refresh failed: ${error.message}`);
+            }
+        }
+
+        function connectSocket() {
+            const baseUrl = getServerBaseUrl();
+            if (!baseUrl) {
+                setConnectionUi(false, 'Missing server URL');
+                return;
+            }
+
+            if (socket) {
+                socket.removeAllListeners();
+                socket.disconnect();
+            }
+
+            setConnectionUi(false, 'Connecting...');
+            socket = io(baseUrl, {
+                transports: ['websocket'],
+                reconnection: true,
+                timeout: 10000,
+            });
+
+            socket.on('connect', () => {
+                if (disconnectUiTimer) {
+                    clearTimeout(disconnectUiTimer);
+                    disconnectUiTimer = null;
+                }
+                setConnectionUi(true, 'Connected');
+                appendLog(`Socket connected (${socket.id})`);
+            });
+
+            socket.on('disconnect', (reason) => {
+                if (disconnectUiTimer) {
+                    clearTimeout(disconnectUiTimer);
+                }
+
+                // Avoid flashing a hard-disconnected state for very brief reconnects.
+                disconnectUiTimer = setTimeout(() => {
+                    setConnectionUi(false, 'Disconnected');
+                }, 1200);
+                appendLog(`Socket disconnected: ${reason}`);
+            });
+
+            socket.on('connect_error', (err) => {
+                setConnectionUi(false, 'Connect error');
+                appendLog(`Socket connect error: ${err?.message || err}`);
+            });
+
+            socket.on('reconnect_attempt', (attempt) => {
+                setConnectionUi(false, `Reconnecting... (${attempt})`);
+            });
+
+            socket.on('reconnect', (attempt) => {
+                if (disconnectUiTimer) {
+                    clearTimeout(disconnectUiTimer);
+                    disconnectUiTimer = null;
+                }
+                setConnectionUi(true, `Connected (reconnect #${attempt})`);
+            });
+
+            socket.on('sensorBatch', (data) => {
+                packetCount += 1;
+                setText('dataCount', String(packetCount));
+                setText('bpm', data?.bpm ?? '--');
+                setText('windowSize', data?.window_size ?? '--');
+                const f = data?.features || {};
+                setText('magnitude', f.magnitude_avg ?? '--');
+                setText('sma', f.sma ?? '--');
+                setText('maxAccel', f.max_accel ?? '--');
+                setText('maxGyro', f.max_gyro ?? '--');
+            });
+
+            socket.on('fallDetected', (event) => {
+                appendLog(`Fall detected: ${event?.id || 'unknown_event'}`);
+                showFallBanner(event || {});
+                loadFallHistory();
+            });
+
+            socket.on('fallResponseUpdated', (event) => {
+                const status = String(event?.status || 'unknown').toLowerCase();
+                appendLog(`Fall response updated: ${status}`);
+                if (status === 'dismissed' || status === 'confirmed') {
+                    hideFallBanner(`Owner marked alert as ${status}.`);
+                }
+                loadFallHistory();
+            });
+        }
+
+        function reconnect() {
+            packetCount = 0;
+            setText('dataCount', '0');
+            connectSocket();
+            refreshStatus();
+            refreshDeviceStatus();
+            loadFallHistory();
+        }
+
+        async function postSimple(path, successText) {
+            const baseUrl = getServerBaseUrl();
+            if (!baseUrl) {
+                alert('Please set server URL first.');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${baseUrl}${path}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                });
+                const payload = await res.json();
+                if (!res.ok || payload?.success === false) {
+                    throw new Error(payload?.error || `HTTP ${res.status}`);
+                }
+                appendLog(successText);
+                await refreshStatus();
+            } catch (error) {
+                appendLog(`${path} failed: ${error.message}`);
+                alert(`${path} failed: ${error.message}`);
+            }
+        }
+
+        async function startSession() {
+            await postSimple('/api/session/start', 'Session started');
+        }
+
+        async function stopSession() {
+            await postSimple('/api/session/stop', 'Session stopped');
+        }
+
+        async function simulateFall() {
+            const baseUrl = getServerBaseUrl();
+            if (!baseUrl) {
+                alert('Please set server URL first.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${baseUrl}/api/simulate-fall`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source: 'web_dashboard',
+                        confidence: 0.98,
+                        fsm_state: 'FSM_FALL_CONFIRMED',
+                        // Simulation should exercise the full push path by default.
+                        notify: true,
+                    }),
+                });
+
+                const payload = await response.json();
+                if (!response.ok || !payload?.success) {
+                    throw new Error(payload?.error || `HTTP ${response.status}`);
+                }
+
+                appendLog(`Simulated fall sent: ${payload.event?.id || 'unknown_event'}`);
+                showFallBanner(payload.event || {});
+                await loadFallHistory();
+            } catch (error) {
+                appendLog(`Simulated fall failed: ${error.message}`);
+                alert(`Simulated fall failed: ${error.message}`);
+            }
+        }
+
+        async function dismissLatestFall() {
+            appendLog('Alert banner hidden from dashboard view (UI only).');
+            hideFallBanner('Alert hidden on dashboard. Waiting for new events.');
+        }
+
+        initializeServerUrlInput();
+        reconnect();
+        setInterval(refreshStatus, 10000);
+        setInterval(refreshDeviceStatus, 10000);
+        setInterval(loadFallHistory, 12000);
     </script>
 </body>
 </html>

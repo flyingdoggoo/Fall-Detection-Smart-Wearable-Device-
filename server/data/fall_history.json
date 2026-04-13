@@ -1,0 +1,1220 @@
+[
+  {
+    "id": "e97d7f10-e5cc-43fe-b41d-9c3736392e51",
+    "event_id": "e97d7f10-e5cc-43fe-b41d-9c3736392e51",
+    "timestamp": "2026-04-13T05:21:24.047Z",
+    "session_id": "label1_2026-04-13T05-21-01",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 22.898,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T05:21:24.047Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T05:53:43.263Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T05:21:29.795Z",
+    "alerted_at": "2026-04-13T05:21:29.847Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T05:21:29.847Z"
+    }
+  },
+  {
+    "id": "c66b29f5-f26a-4623-acb3-48873c65c812",
+    "event_id": "c66b29f5-f26a-4623-acb3-48873c65c812",
+    "timestamp": "2026-04-13T05:12:45.203Z",
+    "session_id": "label1_2026-04-13T05-12-26",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 18.28,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T05:12:45.203Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T05:21:05.879Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T05:12:47.515Z",
+    "alerted_at": "2026-04-13T05:12:47.536Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T05:12:47.536Z"
+    }
+  },
+  {
+    "id": "1bc2a8f5-03d4-4bf7-b679-0c997069e902",
+    "event_id": "1bc2a8f5-03d4-4bf7-b679-0c997069e902",
+    "timestamp": "2026-04-13T05:08:27.487Z",
+    "session_id": "label1_2026-04-13T05-06-59",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 88.066,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T05:08:27.487Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T05:11:27.262Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T05:08:33.190Z",
+    "alerted_at": "2026-04-13T05:08:33.220Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T05:08:33.220Z"
+    }
+  },
+  {
+    "id": "2988593f-a2a4-49c4-b3cd-a6fa3c1a5715",
+    "event_id": "2988593f-a2a4-49c4-b3cd-a6fa3c1a5715",
+    "timestamp": "2026-04-13T05:07:35.225Z",
+    "session_id": "label1_2026-04-13T05-06-59",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 35.803,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T05:07:35.225Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0
+    },
+    "responded_at": "2026-04-13T05:07:48.837Z",
+    "response_note": "Owner acknowledged and marked safe",
+    "response_source": "owner_app"
+  },
+  {
+    "id": "a0bcfcd8-958d-4834-aec4-4358ce480b2d",
+    "event_id": "a0bcfcd8-958d-4834-aec4-4358ce480b2d",
+    "timestamp": "2026-04-13T05:03:10.560Z",
+    "session_id": "label1_2026-04-13T05-02-49",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "alerted",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 20.912,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T05:03:10.560Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T05:03:16.295Z",
+    "response_note": null,
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T05:03:16.271Z",
+    "alerted_at": "2026-04-13T05:03:16.295Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T05:03:16.295Z"
+    }
+  },
+  {
+    "id": "2ea6bd55-87b0-413d-9c86-bad06d8b7290",
+    "event_id": "2ea6bd55-87b0-413d-9c86-bad06d8b7290",
+    "timestamp": "2026-04-13T04:53:43.562Z",
+    "session_id": "label1_2026-04-13T04-53-35",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 7.826,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:53:43.562Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:54:53.553Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:53:48.199Z",
+    "alerted_at": "2026-04-13T04:53:48.220Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:53:48.220Z"
+    }
+  },
+  {
+    "id": "ee93189b-b499-4a58-b363-a9f7033096bd",
+    "event_id": "ee93189b-b499-4a58-b363-a9f7033096bd",
+    "timestamp": "2026-04-13T04:50:38.542Z",
+    "session_id": "label1_2026-04-13T04-50-31",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 6.953,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:50:38.542Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:50:52.696Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:50:43.269Z",
+    "alerted_at": "2026-04-13T04:50:43.307Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:50:43.307Z"
+    }
+  },
+  {
+    "id": "4e8baadd-711e-4d1f-8551-4b33f7b62466",
+    "event_id": "4e8baadd-711e-4d1f-8551-4b33f7b62466",
+    "timestamp": "2026-04-13T04:47:02.053Z",
+    "session_id": "label1_2026-04-13T04-45-47",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 75.035,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:47:02.053Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:47:51.398Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:47:03.740Z",
+    "alerted_at": "2026-04-13T04:47:03.781Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:47:03.781Z"
+    }
+  },
+  {
+    "id": "01d5380f-3946-4dba-82c8-95b1d75223fc",
+    "event_id": "01d5380f-3946-4dba-82c8-95b1d75223fc",
+    "timestamp": "2026-04-13T04:43:24.254Z",
+    "session_id": "label1_2026-04-13T04-43-18",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 6.23,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:43:24.254Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:45:41.489Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:43:27.528Z",
+    "alerted_at": "2026-04-13T04:43:27.576Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:43:27.576Z"
+    }
+  },
+  {
+    "id": "d1515021-ff90-4894-9ebb-910f141a3a83",
+    "event_id": "d1515021-ff90-4894-9ebb-910f141a3a83",
+    "timestamp": "2026-04-13T04:39:21.377Z",
+    "session_id": "label1_2026-04-13T04-33-52",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "alerted",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 328.595,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:39:21.377Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:39:26.195Z",
+    "response_note": null,
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:39:26.143Z",
+    "alerted_at": "2026-04-13T04:39:26.195Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:39:26.195Z"
+    }
+  },
+  {
+    "id": "6d2d772f-401a-4038-8647-73ea5127fa0d",
+    "event_id": "6d2d772f-401a-4038-8647-73ea5127fa0d",
+    "timestamp": "2026-04-13T04:34:02.879Z",
+    "session_id": "label1_2026-04-13T04-33-52",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 10.097,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:34:02.879Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:38:43.842Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:34:05.401Z",
+    "alerted_at": "2026-04-13T04:34:05.430Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:34:05.430Z"
+    }
+  },
+  {
+    "id": "6bba7e9c-8599-4b70-85d7-578894d89be2",
+    "event_id": "6bba7e9c-8599-4b70-85d7-578894d89be2",
+    "timestamp": "2026-04-13T04:29:20.271Z",
+    "session_id": "label1_2026-04-13T04-28-10",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 69.513,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:29:20.271Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:29:45.535Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:29:22.673Z",
+    "alerted_at": "2026-04-13T04:29:22.707Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:29:22.707Z"
+    }
+  },
+  {
+    "id": "36d5d345-fddf-4fca-9cb3-6133abd20757",
+    "event_id": "36d5d345-fddf-4fca-9cb3-6133abd20757",
+    "timestamp": "2026-04-13T04:28:25.234Z",
+    "session_id": "label1_2026-04-13T04-28-10",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 14.476,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:28:25.234Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:28:41.426Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:28:30.588Z",
+    "alerted_at": "2026-04-13T04:28:30.622Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:28:30.622Z"
+    }
+  },
+  {
+    "id": "d81befd0-c9b0-4a93-823b-c6078aae0109",
+    "event_id": "d81befd0-c9b0-4a93-823b-c6078aae0109",
+    "timestamp": "2026-04-13T04:27:40.355Z",
+    "session_id": "label1_2026-04-13T04-23-28",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 251.94,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:27:40.355Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:28:17.815Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:27:46.223Z",
+    "alerted_at": "2026-04-13T04:27:46.257Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:27:46.257Z"
+    }
+  },
+  {
+    "id": "e407f8fd-c269-4a25-92f8-d87531fb8c36",
+    "event_id": "e407f8fd-c269-4a25-92f8-d87531fb8c36",
+    "timestamp": "2026-04-13T04:23:34.132Z",
+    "session_id": "label1_2026-04-13T04-23-28",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 5.717,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:23:34.132Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:23:58.437Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:23:39.302Z",
+    "alerted_at": "2026-04-13T04:23:39.318Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:23:39.318Z"
+    }
+  },
+  {
+    "id": "86a5b8c1-b523-437c-8daf-41e213304b25",
+    "event_id": "86a5b8c1-b523-437c-8daf-41e213304b25",
+    "timestamp": "2026-04-13T04:21:43.705Z",
+    "session_id": "label1_2026-04-13T04-21-21",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 22.302,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:21:43.705Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:23:25.884Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:21:51.683Z",
+    "alerted_at": "2026-04-13T04:21:51.701Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:21:51.701Z"
+    }
+  },
+  {
+    "id": "3709f405-66b9-4da7-885e-dde7f12e7638",
+    "event_id": "3709f405-66b9-4da7-885e-dde7f12e7638",
+    "timestamp": "2026-04-13T04:18:50.112Z",
+    "session_id": "label1_2026-04-13T04-18-37",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 12.596,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:18:50.112Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:21:18.360Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:18:54.792Z",
+    "alerted_at": "2026-04-13T04:18:54.836Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:18:54.836Z"
+    }
+  },
+  {
+    "id": "eb4e7eaa-8f78-4028-92ca-7d1914a27928",
+    "event_id": "eb4e7eaa-8f78-4028-92ca-7d1914a27928",
+    "timestamp": "2026-04-13T04:12:39.399Z",
+    "session_id": "label1_2026-04-13T04-12-29",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 10.042,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:12:39.399Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:18:29.690Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:12:44.759Z",
+    "alerted_at": "2026-04-13T04:12:44.786Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:12:44.786Z"
+    }
+  },
+  {
+    "id": "ac979a87-e2f8-48a3-8fbd-76f3eeb69916",
+    "event_id": "ac979a87-e2f8-48a3-8fbd-76f3eeb69916",
+    "timestamp": "2026-04-13T04:09:26.924Z",
+    "session_id": "label1_2026-04-13T04-06-09",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "alerted",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 197.301,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:09:26.924Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:09:33.146Z",
+    "response_note": null,
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:09:33.104Z",
+    "alerted_at": "2026-04-13T04:09:33.146Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:09:33.146Z"
+    }
+  },
+  {
+    "id": "6b4f0c5a-ae65-44a1-b319-042bb3f75c57",
+    "event_id": "6b4f0c5a-ae65-44a1-b319-042bb3f75c57",
+    "timestamp": "2026-04-13T04:06:42.490Z",
+    "session_id": "label1_2026-04-13T04-06-09",
+    "confidence": 0.98,
+    "threshold": 0.8,
+    "status": "acknowledged",
+    "source": "web_dashboard",
+    "model_version": "manual_simulation",
+    "esp32_fall_detected": true,
+    "features": {
+      "magnitude_avg": 9.81,
+      "sma": 3.2,
+      "max_accel": 31.4,
+      "max_gyro": 2.1,
+      "std_accel": 0.7,
+      "jerk_peak": 150.2
+    },
+    "fsm_state": "FSM_FALL_CONFIRMED",
+    "bpm": 78,
+    "elapsed_seconds": 32.867,
+    "location": null,
+    "notification": {
+      "requested_at": "2026-04-13T04:06:42.490Z",
+      "simulated": true,
+      "sent": true,
+      "success_count": 1,
+      "failure_count": 0,
+      "token_count": 1,
+      "target_roles": [
+        "owner"
+      ],
+      "stage": "pending",
+      "removed_invalid_tokens": 0,
+      "relative_alerted": {
+        "sent": false,
+        "reason": "No registered FCM tokens",
+        "token_count": 0
+      }
+    },
+    "responded_at": "2026-04-13T04:07:36.241Z",
+    "response_note": "Owner acknowledged after alerting",
+    "response_source": "owner_app",
+    "confirmed_at": "2026-04-13T04:06:50.940Z",
+    "alerted_at": "2026-04-13T04:06:50.970Z",
+    "escalation": {
+      "reason": "owner_confirmed_fall",
+      "location": null,
+      "call": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "sms": {
+        "provider": "mock",
+        "attempted": 2,
+        "success": true
+      },
+      "updated_at": "2026-04-13T04:06:50.970Z"
+    }
+  }
+]
