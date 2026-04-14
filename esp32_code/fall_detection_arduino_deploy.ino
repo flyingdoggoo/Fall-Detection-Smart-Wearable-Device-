@@ -12,13 +12,13 @@
 // const char* password   = "888888888";
 // const char* serverHost = "172.20.10.3";
 
-const char* ssid       = "Giat Ui Tigon 1"; 
-const char* password   = "789789789";
-const char* serverHost = "192.168.1.7";
+// const char* ssid       = "Giat Ui Tigon 1"; 
+// const char* password   = "789789789";
+// const char* serverHost = "192.168.1.7";
 
-// const char* ssid       = "Veitel";
-// const char* password   = "12345667";
-// const char* serverHost = "10.120.115.2";
+const char* ssid       = "Veitel";
+const char* password   = "12345667";
+const char* serverHost = "10.30.239.150";
 const uint16_t serverPort = 5683;
 
 
@@ -59,13 +59,13 @@ const uint16_t serverPort = 5683;
 // FSM – NGƯỠNG PHÁT HIỆN NGÃ OFFLINE
 // ================================================================
 #define FREE_FALL_THRESH      5.5f   
-#define IMPACT_THRESH         30.0f  
+#define IMPACT_THRESH         50.0f  
 #define MIN_FREEFALL_SAMPLES    2    
 #define IMPACT_WINDOW_MS      800    
-#define POST_FALL_VARIANCE   8.0f   
-#define POST_FALL_CHECK_MS   3000    
+#define POST_FALL_VARIANCE   0.5f   
+#define POST_FALL_CHECK_MS   5000    
 #define ALERT_DURATION_MS    2000    
-#define FSM_TIMEOUT_MS       4000  
+#define FSM_TIMEOUT_MS       7000  
 
 // ================================================================
 // 2. CẤU TRÚC DỮ LIỆU
@@ -677,7 +677,7 @@ bool sendCoapPost(const char* path, const uint8_t* payload, size_t payloadLen,
 // 8. DEPLOY MODE: CHỈ GỬI DATA QUA CoAP (KHÔNG SESSION)
 // ================================================================
 bool shouldSendBatchByFSM(int fsmState) {
-  return (fsmState == FSM_FREEFALL || fsmState == FSM_IMPACT);
+  return (fsmState == FSM_IMPACT);
 }
 
 void sendWindow() {
